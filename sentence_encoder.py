@@ -1,5 +1,10 @@
-import args
+import torch
+
+from torch import nn.LSTM
 
 
 def main():
-    return 1
+    return torch.cuda.is_available()
+
+
+main()

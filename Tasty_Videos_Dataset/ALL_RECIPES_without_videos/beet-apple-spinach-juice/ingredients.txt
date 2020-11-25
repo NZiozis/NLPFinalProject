@@ -1,0 +1,4 @@
+celery, diced
+gala apple, cored and diced
+beet, diced
+spinach

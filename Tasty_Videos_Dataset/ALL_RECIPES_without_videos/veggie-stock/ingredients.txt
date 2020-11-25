@@ -1,0 +1,8 @@
+celery, top and bottom 
+onion, top and bottom skins 
+carrot, ends and skin 
+potato, ends and skin 
+asparagus, bottom stalks 
+brussels sprouts, extra leaves and bottoms 
+mushroom, stem 
+bell pepper, top and bottoms 
