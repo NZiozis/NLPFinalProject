@@ -4,6 +4,7 @@ import numpy as np
 import pickle
 from tqdm import *
 import nltk
+from .Vocabulary import Vocabulary
 
 
 class RECIPE1M:
@@ -12,7 +13,7 @@ class RECIPE1M:
         self.sentences, self.ingredients = dict(), dict()
 
         layer1 = json.load(open(args.json_joint, 'r'))  # Load json
-
+        print("RECIPE1M vocab_ing ", args.vocab_ing)
         with open(args.vocab_ing, 'rb') as f:
             vocab_ing = pickle.load(f)
         lenVoc = len(vocab_ing)

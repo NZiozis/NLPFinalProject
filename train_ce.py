@@ -2,9 +2,10 @@
 import torch
 import torch.nn as nn
 import os
-from data_loader import get_loader
-from model_ce import EncoderINGREDIENT, EncoderRECIPE, DecoderSENTENCES
-from model_ce import BLSTMprojEncoder, SP_EMBEDDING
+from datasets.data_loader import get_loader
+from models.model_ce import EncoderINGREDIENT, EncoderRECIPE, DecoderSENTENCES
+from models.model_ce import BLSTMprojEncoder, SP_EMBEDDING
+from models.video_encoder import VideoEncoder
 from torch.nn.utils.rnn import pack_sequence
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import pickle
@@ -14,12 +15,12 @@ import numpy as np
 from datetime import datetime
 import socket
 import argparse
-from Vocabulary import Vocabulary
+from datasets.Vocabulary import Vocabulary
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-COMP_PATH = '/home/cristinam/cse538/project'
+COMP_PATH = '/home/cristinam/cse538/project/NLPFinalProject'
 
 
 def train(args, name_repo):
@@ -34,17 +35,29 @@ def train(args, name_repo):
     # Build the models
     encoder_ingredient = EncoderINGREDIENT(args).to(device)
     embed_words = SP_EMBEDDING(args).to(device)
-    encoder_sentences = BLSTMprojEncoder(args).to(device)
     encoder_recipe = EncoderRECIPE(args).to(device)
     decoder_sentences = DecoderSENTENCES(args).to(device)
+    
+    if args.video_encoder:
+        # Build video encoder
+        encoder_video = VideoEncoder(args.sentEnd_hiddens).to(device)
+        encoder_sentences = None
+    else:
+        encoder_sentences = BLSTMprojEncoder(args).to(device)
+        encoder_video = None
 
     # Loss and optimizer
     criterion_sent = nn.CrossEntropyLoss()
     params = list(embed_words.parameters()) + \
              list(encoder_recipe.parameters()) + \
              list(encoder_ingredient.parameters()) + \
-             list(decoder_sentences.parameters()) + \
-             list(encoder_sentences.parameters())
+             list(decoder_sentences.parameters())
+
+    if args.video_encoder:
+        params = params + list(encoder_video.parameters())
+    else:
+        params = params + list(encoder_sentences.parameters())
+
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
     # Build data loader
@@ -59,34 +72,35 @@ def train(args, name_repo):
         epoch_loss_all = 0
 
         # Set mini-batch dataset
-        for i, (ingredients_v, rec_lens, sentences_v, sent_lens, indices, indices_encoder) in enumerate(train_loader):
-            print("ingredients ", ingredients_v)
-            print("recipe lengths ", rec_lens)
-            print("sentences ", sentences_v)
-            print("indices ", indices)
-            print("indices encoder ", indices_encoder)
-            ingredients_v = ingredients_v.to(device)  # [N, Nv] -> Nv = ingredient vocab. len
-            sentences_v = sentences_v.to(device)  # [Nb, Ns] -> [total num sent, max sent len.]
-            sent_lens = sent_lens.to(device)  # Nb-> total sent. num, max
+        #for i, (ingredients_v, rec_lens, sentences_v, sent_lens, indices, indices_encoder) in enumerate(train_loader):
+            #ingredients_v = ingredients_v.to(device)  # [N, Nv] -> Nv = ingredient vocab. len
+            #sentences_v = sentences_v.to(device)  # [Nb, Ns] -> [total num sent, max sent len.]
+            #sent_lens = sent_lens.to(device)  # Nb-> total sent. num, max
+        for i, (inputs, sentences_v, ingredients_v) in enumerate(train_loader):
+            inputs = [i.float().cuda() for i in inputs]
 
-            """ 1. encode sentences """
-            word_embs = embed_words(sentences_v)  # [Nb, Ns, 256]
-            sentence_enc = encoder_sentences(word_embs, sent_lens)  # [Nb, 1024]
+            if args.video_encoder:
+                # sentences_v will be the video data for each sentence
+                recipes_v = [encoder_video(i) for i in inputs]
+            else:
+                """ 1. encode sentences """
+                word_embs = embed_words(sentences_v)  # [Nb, Ns, 256]
+                sentence_enc = encoder_sentences(word_embs, sent_lens)  # [Nb, 1024]
 
-            """ reshape sentences wrt the recipe order """
-            # sort the indices
-            _, orgj_idx = indices_encoder.sort(0, descending=False)  # [Nb]
-            orgj_idx = Variable(orgj_idx).cuda()  # [Nb]
+                """ reshape sentences wrt the recipe order """
+                # sort the indices
+                _, orgj_idx = indices_encoder.sort(0, descending=False)  # [Nb]
+                orgj_idx = Variable(orgj_idx).cuda()  # [Nb]
 
-            # permute sentence according to instructional order within a batch
-            sentence_enc = sentence_enc.index_select(0, orgj_idx)  # [Nb, 1024]
+                # permute sentence according to instructional order within a batch
+                sentence_enc = sentence_enc.index_select(0, orgj_idx)  # [Nb, 1024]
 
-            # split according to the batch, note that the batch is ordered
-            sentence_enc_spl = torch.split(sentence_enc, rec_lens, dim=0)
+                # split according to the batch, note that the batch is ordered
+                sentence_enc_spl = torch.split(sentence_enc, rec_lens, dim=0)
 
-            # pack and pad the ordered sentences
-            recipes_v_pckd = pack_sequence(sentence_enc_spl)
-            recipes_v = pad_packed_sequence(recipes_v_pckd, batch_first=True)[0]  # [N, rec_lens[0], 1024]
+                # pack and pad the ordered sentences
+                recipes_v_pckd = pack_sequence(sentence_enc_spl)
+                recipes_v = pad_packed_sequence(recipes_v_pckd, batch_first=True)[0]  # [N, rec_lens[0], 1024]
 
             """ 2. encode ingredient """
             ingredient_feats = encoder_ingredient(ingredients_v).unsqueeze(1)  # [N, 1, 1024]
@@ -185,9 +199,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     name_repo = 'retrain_video_enc'
 
-    intermediate_fd = os.path.join(COMP_PATH, 'INTERMEDIATE/' + name_repo + '/')
-    json_fd = os.path.join(COMP_PATH, 'DATA/Recipe1M/')
-    vocab_fd = os.path.join(COMP_PATH, 'DATA/vocab/')
+    # TODO: Move DATA to same folder as code
+    intermediate_fd = '/home/cristinam/cse538/project/saved_models/'+name_repo+'/'
+    json_fd = '/home/cristinam/cse538/project/DATA/Recipe1M/'
+    vocab_fd = '/home/cristinam/cse538/project/DATA/vocab/'
+    #intermediate_fd = os.path.join(COMP_PATH, 'INTERMEDIATE/' + name_repo + '/')
+    #json_fd = os.path.join(COMP_PATH, 'DATA/Recipe1M/')
+    #vocab_fd = os.path.join(COMP_PATH, 'DATA/vocab/')
 
     parser.add_argument('--json_joint', type=str, default=(json_fd + 'layer1_joint.json'), help='path for annotations')
     parser.add_argument('--vocab_bin', type=str, default=(vocab_fd + 'vocab_bin_30171.pkl'), help='')
@@ -206,6 +224,7 @@ if __name__ == '__main__':
     parser.add_argument('--sentDec_hiddens', type=int, default=512, help='')
     parser.add_argument('--sentDec_nlayers', type=int, default=1, help='')
     parser.add_argument('--sentences_sorted', type=int, default=1, help='')
+    parser.add_argument('--video_encoder', type=bool, default=False)
 
     # training parameters
     parser.add_argument('--log_step', type=int, default=20, help='step size for printing log info')

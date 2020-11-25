@@ -2,3 +2,5 @@ torch
 torchvision
 numpy
 wandb
+beautifulsoup4
+lxml

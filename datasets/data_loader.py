@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 import torch
 import torch.utils.data as data
-from RECIPE1M import RECIPE1M
+from .RECIPE1M import RECIPE1M
+from .video_datasets import TastyVideoDataset
 
 
 class Recipe1MDataset(data.Dataset):
@@ -80,10 +81,17 @@ def collate_fn(data):
 def get_loader(args, batch_size, vocab, shuffle, num_workers):
     """Returns torch.utils.data.DataLoader for custom Recipe1M dataset."""
 
-    recipe1m = Recipe1MDataset(args, vocab)
-    data_loader = torch.utils.data.DataLoader(dataset=recipe1m,
+    if args.video_encoder:
+        tasty_videos = TastyVideoDataset()
+        data_loader = torch.utils.data.DataLoader(dataset=tasty_videos,
                                               batch_size=batch_size,
                                               shuffle=shuffle,
-                                              num_workers=num_workers,
-                                              collate_fn=collate_fn)
+                                              num_workers=num_workers)
+    else:
+        recipe1m = Recipe1MDataset(args, vocab)
+        data_loader = torch.utils.data.DataLoader(dataset=recipe1m,
+                                                  batch_size=batch_size,
+                                                  shuffle=shuffle,
+                                                  num_workers=num_workers,
+                                                  collate_fn=collate_fn)
     return data_loader
