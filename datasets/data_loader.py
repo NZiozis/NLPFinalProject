@@ -29,7 +29,7 @@ class Recipe1MDataset(data.Dataset):
             caption = [vocab('<start>'), vocab('<end>')]
             caption.extend([vocab(token) for token in tokens[x]])
             target_captions.append(torch.Tensor(caption))
-
+            
         return ingredients, target_captions
 
 

@@ -33,7 +33,6 @@ def train(args, name_repo):
     out_dir = args.model_path
 
     # Build the models
-    encoder_ingredient = EncoderINGREDIENT(args).to(device)
     embed_words = SP_EMBEDDING(args).to(device)
     encoder_recipe = EncoderRECIPE(args).to(device)
     decoder_sentences = DecoderSENTENCES(args).to(device)
@@ -42,21 +41,22 @@ def train(args, name_repo):
         # Build video encoder
         encoder_video = VideoEncoder(args.sentEnd_hiddens).to(device)
         encoder_sentences = None
+        encoder_ingredient = None
     else:
         encoder_sentences = BLSTMprojEncoder(args).to(device)
+        encoder_ingredient = EncoderINGREDIENT(args).to(device)
         encoder_video = None
 
     # Loss and optimizer
     criterion_sent = nn.CrossEntropyLoss()
     params = list(embed_words.parameters()) + \
              list(encoder_recipe.parameters()) + \
-             list(encoder_ingredient.parameters()) + \
              list(decoder_sentences.parameters())
 
     if args.video_encoder:
         params = params + list(encoder_video.parameters())
     else:
-        params = params + list(encoder_sentences.parameters())
+        params = params + list(encoder_sentences.parameters()) + list(encoder_ingredient.parameters())
 
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
@@ -71,18 +71,14 @@ def train(args, name_repo):
     for epoch in range(args.num_epochs):
         epoch_loss_all = 0
 
-        # Set mini-batch dataset
-        #for i, (ingredients_v, rec_lens, sentences_v, sent_lens, indices, indices_encoder) in enumerate(train_loader):
-            #ingredients_v = ingredients_v.to(device)  # [N, Nv] -> Nv = ingredient vocab. len
-            #sentences_v = sentences_v.to(device)  # [Nb, Ns] -> [total num sent, max sent len.]
-            #sent_lens = sent_lens.to(device)  # Nb-> total sent. num, max
-        for i, (inputs, sentences_v, ingredients_v) in enumerate(train_loader):
-            inputs = [i.float().cuda() for i in inputs]
+        # Case where we just have sentence encoder
+        if not args.video_encoder:
+            # Set mini-batch dataset
+            for i, (ingredients_v, rec_lens, sentences_v, sent_lens, indices, indices_encoder) in enumerate(train_loader):
+                ingredients_v = ingredients_v.to(device)  # [N, Nv] -> Nv = ingredient vocab. len
+                sentences_v = sentences_v.to(device)  # [Nb, Ns] -> [total num sent, max sent len.]
+                sent_lens = sent_lens.to(device)  # Nb-> total sent. num, max
 
-            if args.video_encoder:
-                # sentences_v will be the video data for each sentence
-                recipes_v = [encoder_video(i) for i in inputs]
-            else:
                 """ 1. encode sentences """
                 word_embs = embed_words(sentences_v)  # [Nb, Ns, 256]
                 sentence_enc = encoder_sentences(word_embs, sent_lens)  # [Nb, 1024]
@@ -102,52 +98,100 @@ def train(args, name_repo):
                 recipes_v_pckd = pack_sequence(sentence_enc_spl)
                 recipes_v = pad_packed_sequence(recipes_v_pckd, batch_first=True)[0]  # [N, rec_lens[0], 1024]
 
-            """ 2. encode ingredient """
-            ingredient_feats = encoder_ingredient(ingredients_v).unsqueeze(1)  # [N, 1, 1024]
+                """ 2. encode ingredient """
+                ingredient_feats = encoder_ingredient(ingredients_v).unsqueeze(1)  # [N, 1, 1024]
 
-            """ 3. encode recipe """
-            if epoch >= 5:
-                use_teacherF = random.random() < (0.5)
-            recipe_enc = encoder_recipe(ingredient_feats, recipes_v, rec_lens, use_teacherF)  # [Nb, 1024]
+                """ 3. encode recipe """
+                if epoch >= 5:
+                    use_teacherF = random.random() < (0.5)
+                recipe_enc = encoder_recipe(ingredient_feats, recipes_v, rec_lens, use_teacherF)  # [Nb, 1024]
 
-            """ 4. decode sentences """
-            idx = Variable(indices).cuda()
-            recipe_enc = recipe_enc.index_select(0, idx)  # [Nb, 1024]
+                """ 4. decode sentences """
+                idx = Variable(indices).cuda()
+                recipe_enc = recipe_enc.index_select(0, idx)  # [Nb, 1024]
 
-            sentence_dec = decoder_sentences(recipe_enc, word_embs, sent_lens)
-            # [sum(sent_lens), Nw] -- Nw = number of words in the vocabulary
+                sentence_dec = decoder_sentences(recipe_enc, word_embs, sent_lens)
+                # [sum(sent_lens), Nw] -- Nw = number of words in the vocabulary
 
-            sentence_target = pack_padded_sequence(sentences_v, sent_lens, batch_first=True)[0]  # [ sum(sent_lens) ]
+                sentence_target = pack_padded_sequence(sentences_v, sent_lens, batch_first=True)[0]  # [ sum(sent_lens) ]
 
-            """ Compute the loss """
-            all_loss = criterion_sent(sentence_dec, sentence_target)
-            epoch_loss_all += all_loss
+                """ Compute the loss """
+                all_loss = criterion_sent(sentence_dec, sentence_target)
+                epoch_loss_all += all_loss
 
-            """ Backpropagation """
-            encoder_recipe.zero_grad()
-            encoder_ingredient.zero_grad()
-            decoder_sentences.zero_grad()
-            encoder_sentences.zero_grad()
-            embed_words.zero_grad()
+                """ Backpropagation """
+                encoder_recipe.zero_grad()
+                encoder_ingredient.zero_grad()
+                decoder_sentences.zero_grad()
+                encoder_sentences.zero_grad()
+                embed_words.zero_grad()
 
-            all_loss.backward()
-            optimizer.step()
+                all_loss.backward()
+                optimizer.step()
 
-            """ Printing and evaluations """
-            if i % args.log_step == 0:  # Print log info
-                print('Epoch [{}/{}], Step [{}/{}], Loss: {:.10f} '.format(epoch, args.num_epochs, i, total_step,
-                                                                           all_loss.item()))
+                """ Printing and evaluations """
+                if i % args.log_step == 0:  # Print log info
+                    print('Epoch [{}/{}], Step [{}/{}], Loss: {:.10f} '.format(epoch, args.num_epochs, i, total_step,
+                                                                               all_loss.item()))
 
-            if (i + 1) % args.save_step == 0:  # Print sentences
-                generate(sentences_v[0, :], vocab, recipe_enc, decoder_sentences, embed_words)
+                if (i + 1) % args.save_step == 0:  # Print sentences
+                    generate(sentences_v[0, :], vocab, recipe_enc, decoder_sentences, embed_words)
 
-        if (epoch + 1) % 5 == 0:  # Save the model checkpoints
-            save_models(args, (encoder_recipe, encoder_ingredient, decoder_sentences, encoder_sentences, embed_words),
-                        epoch + 1)
+            if (epoch + 1) % 5 == 0:  # Save the model checkpoints
+                save_models(args, (encoder_recipe, encoder_ingredient, decoder_sentences, encoder_sentences, embed_words),
+                            epoch + 1)
+        
+        # Case where we just have the video encoder
+        else:
+            for i, (inputs, sentences_v, ingredients_v) in enumerate(train_loader):
+                inputs = [j.float().cuda() for j in inputs]
 
-    # Save the final model
-    save_models(args, (encoder_recipe, encoder_ingredient, decoder_sentences, encoder_sentences, embed_words),
-                epoch + 1)
+                # Sentences_v will be the video data for each sentence
+                recipes_v = [encoder_video(j) for j in inputs]
+                recipes_v = torch.stack(recipes_v)
+                recipes_v = recipes_v.permute(1, 0, 2) # (batch_size, num_sentences, hidden_dim)
+
+                # Use empty ingredients list
+                ingredient_feats = torch.zeros((args.batch_size, 1, 1024)).float().cuda()
+                rec_lens = torch.tensor([recipes_v.shape[1]])
+
+                if epoch >= 5:
+                    use_teacherF = random.random() < (0.5)
+                recipe_enc = encoder_recipe(ingredient_feats, recipes_v, rec_lens, use_teacherF)  # [Nb, 1024]
+
+                idx = Variable(indices).cuda()
+                recipe_enc = recipe_enc.index_select(0, idx)  # [Nb, 1024]
+
+                sentence_dec = decoder_sentences(recipe_enc, word_embs, sent_lens)
+                # [sum(sent_lens), Nw] -- Nw = number of words in the vocabulary
+
+                sentence_target = pack_padded_sequence(sentences_v, sent_lens, batch_first=True)[0]  # [ sum(sent_lens) ]
+
+                all_loss = criterion_sent(sentence_dec, sentence_target)
+                epoch_loss_all += all_loss
+
+                encoder_recipe.zero_grad()
+                decoder_sentences.zero_grad()
+                encoder_video.zero_grad()
+                embed_words.zero_grad()
+
+                all_loss.backward()
+                optimizer.step()
+
+                if i % args.log_step == 0:  # Print log info
+                    print('Epoch [{}/{}], Step [{}/{}], Loss: {:.10f} '.format(epoch, args.num_epochs, i, total_step,
+                                                                               all_loss.item()))
+            if (epoch + 1) % 5 == 0:  # Save the model checkpoints
+                save_models(args, (encoder_recipe, decoder_sentences, encoder_video, embed_words),
+                            epoch + 1)
+        
+    if args.video_encoder:
+        # Save the final models
+        save_models(args, (encoder_recipe, decoder_sentences, encoder_video, embed_words),
+                    epoch + 1)
+    else:
+        save_models(args, (encoder_recipe, encoder_ingredient, decoder_sentences, encoder_sentences, embed_words),
+                    epoch + 1)
 
 
 def save_models(args, all_models, epoch_val):

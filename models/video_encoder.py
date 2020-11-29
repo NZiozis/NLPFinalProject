@@ -9,11 +9,12 @@ class VideoEncoder(nn.Module):
 		self.backbone = torchvision.models.resnet50(pretrained=True)
 		self.backbone.fc = torch.nn.Linear(in_features=2048, out_features=512, bias=True)
 		self.lstm = nn.LSTM(input_size=512, hidden_size=512, batch_first=True, bidirectional=True)
-		self.maxpool = nn.MaxPool1d(kernel_size=512)
+		self.maxpool = nn.MaxPool1d(kernel_size=1024)
 
 	def forward(self, inputs):
 		"""
 		@param inputs (torch.Tensor): Shape (1, number_frames, height, width, channels)
+		@return out (torch.Tensor): Shape (1, 1024) where 1024 = dimension output by LSTM
 		"""
 		# Remove batch dimension of 1
 		inputs = torch.squeeze(inputs, dim=0)
@@ -28,7 +29,10 @@ class VideoEncoder(nn.Module):
 		lstm_feats = self.lstm(backbone_feats)[0]
 
 		# Apply max pool over timesteps
-		out = self.maxpool(lstm_feats)
-		print("maxpool shape ", out.shape)
+		lstm_feats = lstm_feats.permute(0, 2, 1)
+		num_steps = lstm_feats.shape[2]
+		pool = nn.MaxPool1d(num_steps)
+		out = pool(lstm_feats)
+		out = torch.squeeze(out, dim=2)
 
 		return out

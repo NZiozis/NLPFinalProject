@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pack_padded_sequence, PackedSequence
 from torch.autograd import Variable
 import numpy as np
 import random
@@ -9,6 +9,21 @@ import operator
 from queue import PriorityQueue
 import torch.nn.functional as F
 
+def hotfix_pack_padded_sequence(input, lengths, batch_first=False, enforce_sorted=True):
+    #lengths = torch.as_tensor(lengths, dtype=torch.int64)
+    lengths = torch.from_numpy(lengths.copy())
+    lengths = lengths.cpu()
+    if enforce_sorted:
+        sorted_indices = None
+    else:
+        lengths, sorted_indices = torch.sort(lengths, descending=True)
+        sorted_indices = sorted_indices.to(input.device)
+        batch_dim = 0 if batch_first else 1
+        input = input.index_select(batch_dim, sorted_indices)
+
+    data, batch_sizes = \
+        torch._C._VariableFunctions._pack_padded_sequence(input, lengths, batch_first)
+    return PackedSequence(data, batch_sizes, sorted_indices)
 
 class SP_EMBEDDING(nn.Module):
     def __init__(self, args):
@@ -53,7 +68,10 @@ class BLSTMprojEncoder(nn.Module):
             sent = sent.index_select(1, idx_sort)  # sent --> [Ns, Nb, 256]
 
         # Handling padding in Recurrent Networks
-        sent_packed = nn.utils.rnn.pack_padded_sequence(sent, sent_len)
+        #import pdb
+        #pdb.set_trace()
+        sent_packed = hotfix_pack_padded_sequence(sent, sent_len)
+        #sent_packed = nn.utils.rnn.pack_padded_sequence(sent, sent_len)
         # [0] --> [NbxNs, 256]  #[1] --> Ns
         sent_out = self.enc_lstm(sent_packed)[0]
         # [0] --> [NbxNs, 1024]  # [1] --> Ns
@@ -62,7 +80,7 @@ class BLSTMprojEncoder(nn.Module):
 
         if not self.sentences_sorted:
             # Un-sort by length
-            idx_unsort = torch.LongTensor(np.argsort(idx_sort)).cuda()
+            idx_unsort = torch.LongTensor(np.argsort(idx_sort.cpu())).cuda()
             sent_out = sent_out.index_select(1, idx_unsort)
             # sent --> [Ns, Nb, 1024]
 

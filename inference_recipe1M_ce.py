@@ -15,7 +15,8 @@ from Vocabulary import Vocabulary
 import sys
 
 # COMP_PATH = '/home/sener/share/RecipeJournal/'
-COMP_PATH = '/mnt/teufelskapelle/RecipeJournal/'
+#COMP_PATH = '/mnt/teufelskapelle/RecipeJournal/'
+COMP_PATH = '/home/cristinam/cse538/project'
 
 sys.path.insert(0, (COMP_PATH + 'LIBS/coco-caption/'))
 from pycocoevalcap.tokenizer.ptbtokenizer import PTBTokenizer
@@ -230,7 +231,7 @@ def main_ingredients(args):
 
     lmdb_obj = lmdb.open(args.lmdb_test, map_size=int(1e11))
     layer1 = json.load(open(args.json_joint, 'r'))
-    dicts = np.load(args.dict_test).item()
+    dicts = np.load(args.dict_test, allow_pickle=True).item()
     counter_rec = 0
     print('Reading the test dataset')
     with lmdb_obj.begin() as txn:
@@ -554,7 +555,7 @@ if __name__ == '__main__':
     # eval_type = 'sent'
     # eval_type = 'verb'
 
-    name_repo = 'iccv_model_ce'
+    name_repo = 'retrain_sentence_enc'
     def_model_file = 'models_e1024_he512_hre1024_hd512_ep50_b50_l0_001/'
     beam_yes_list = [0, 1]
 
@@ -564,11 +565,11 @@ if __name__ == '__main__':
 
         data_folder = os.path.join(COMP_PATH, 'INTERMEDIATE/' + name_repo + '/')
         model_loc = data_folder + def_model_file
-        parser.add_argument('--encoder_ingredient', type=str, default=model_loc + 'encoder_ingredient.ckpt', help='')
-        parser.add_argument('--encoder_recipe', type=str, default=model_loc + 'encoder_recipe.ckpt', help='')
-        parser.add_argument('--encoder_sentences', type=str, default=model_loc + 'encoder_sentences.ckpt', help='')
-        parser.add_argument('--decoder_sentences', type=str, default=model_loc + 'decoder_sentences.ckpt', help='')
-        parser.add_argument('--embed_words', type=str, default=model_loc + 'embed_words.ckpt', help='')
+        parser.add_argument('--encoder_ingredient', type=str, default=model_loc + 'encoder_ingredient-50.ckpt', help='')
+        parser.add_argument('--encoder_recipe', type=str, default=model_loc + 'encoder_recipe-50.ckpt', help='')
+        parser.add_argument('--encoder_sentences', type=str, default=model_loc + 'encoder_sentences-50.ckpt', help='')
+        parser.add_argument('--decoder_sentences', type=str, default=model_loc + 'decoder_sentences-50.ckpt', help='')
+        parser.add_argument('--embed_words', type=str, default=model_loc + 'embed_words-50.ckpt', help='')
 
         json_fd = os.path.join(COMP_PATH, 'DATA/Recipe1M/')
         vocab_fd = os.path.join(COMP_PATH, 'DATA/vocab/')

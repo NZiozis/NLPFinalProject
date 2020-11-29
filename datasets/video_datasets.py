@@ -66,7 +66,7 @@ class TastyVideoDataset(data.Dataset):
                     # If interval not empty
                     if start != end:
                         # Get video frames
-                        frames.append([os.path.join(vid_folder, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1)])
+                        frames.append([os.path.join(vid_folder, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 5)])
                         # Get sentences for this step
                         sentences.append(recipe_steps[count])
                     count+=1

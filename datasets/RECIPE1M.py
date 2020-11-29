@@ -13,7 +13,7 @@ class RECIPE1M:
         self.sentences, self.ingredients = dict(), dict()
 
         layer1 = json.load(open(args.json_joint, 'r'))  # Load json
-        print("RECIPE1M vocab_ing ", args.vocab_ing)
+        
         with open(args.vocab_ing, 'rb') as f:
             vocab_ing = pickle.load(f)
         lenVoc = len(vocab_ing)
@@ -52,8 +52,8 @@ class RECIPE1M:
             if counter_rec % 10000 == 0:
                 print(counter_rec)
 
-            # TODO: REMOVE DEBUG LINES
-            if counter_rec % 10000 == 0:
-                break
+            # TODO: REMOVE DEBUG LINES when not debugging
+            #if counter_rec % 1000 == 0:
+            #    break
 
         print('total number of recipes in Recipe1M: ' + str(counter_rec))
