@@ -1,0 +1,4 @@
+kiwi, sliced
+apple, sliced
+banana, sliced
+milk
