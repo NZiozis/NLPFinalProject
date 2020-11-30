@@ -36,27 +36,27 @@ def train(args, name_repo):
     embed_words = SP_EMBEDDING(args).to(device)
     encoder_recipe = EncoderRECIPE(args).to(device)
     decoder_sentences = DecoderSENTENCES(args).to(device)
+    encoder_ingredient = EncoderINGREDIENT(args).to(device)
     
     if args.video_encoder:
         # Build video encoder
         encoder_video = VideoEncoder(args.sentEnd_hiddens).to(device)
         encoder_sentences = None
-        encoder_ingredient = None
     else:
         encoder_sentences = BLSTMprojEncoder(args).to(device)
-        encoder_ingredient = EncoderINGREDIENT(args).to(device)
         encoder_video = None
 
     # Loss and optimizer
     criterion_sent = nn.CrossEntropyLoss()
     params = list(embed_words.parameters()) + \
              list(encoder_recipe.parameters()) + \
-             list(decoder_sentences.parameters())
+             list(decoder_sentences.parameters()) + \
+             list(encoder_ingredient.parameters())
 
     if args.video_encoder:
         params = params + list(encoder_video.parameters())
     else:
-        params = params + list(encoder_sentences.parameters()) + list(encoder_ingredient.parameters())
+        params = params + list(encoder_sentences.parameters())
 
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 

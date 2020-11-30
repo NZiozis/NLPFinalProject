@@ -7,6 +7,7 @@ import re
 from PIL import Image
 import numpy as np
 import json
+import codecs
 
 class TastyVideoDataset(data.Dataset):
     '''
@@ -14,7 +15,7 @@ class TastyVideoDataset(data.Dataset):
     @param split (str): Can be 'train' or 'test'
     @param img_transform (torch.Transform): Apply a Pytorch image transformation to all images
     '''
-    def __init__(self, root='/nfs/bigiris/cristinam/Tasty_Videos_Dataset', split="train", img_transform=None):
+    def __init__(self, root='/nfs/bigiris/cristinam/Tasty_Videos_Dataset', split="train", embedding_type='fasttext', img_transform=None):
         assert split in ["train", "val", "test"]
         self.root = root
         self.split = split
@@ -22,6 +23,31 @@ class TastyVideoDataset(data.Dataset):
         self.files = collections.defaultdict(list)
         self.img_transform = img_transform
         self.crop_size = 256
+
+        # Load embeddings file
+        if embedding_type == 'fasttext':
+            with open('data/fasttext_embeds_codecs.txt', 'r') as embedFile:
+                embeds = embedFile.readlines()
+        elif embedding_type == 'glove':
+            with open('data/vocab_glove_embeds.txt', 'r') as embedFile:
+                embeds = embedFile.readlines()
+        else:
+            print("Embedding type ", embedding_type, " not supported")
+            embeds = None
+        # Create dictionary mapping word to embedding vector
+        self.embed_dict = dict()
+        for embed in embeds:
+            spl = embed.split(' ')
+            float_list = [float(i) for i in spl[1:-1]]
+            self.embed_dict[spl[0]] = float_list
+
+        # Load word dict
+        with open('data/Tasty_Videos_Dataset/id2word_tasty.txt', 'rb') as idFile:
+            data = idFile.read()
+        id_dict = eval(data)
+        id_dict_decoded = dict()
+        for key, val in id_dict.items():
+            id_dict_decoded[key] = codecs.decode(val)
 
         with open('data/Tasty_Videos_Dataset/all_recipes_processed.txt', 'r') as recipeFile:
             recipe_dicts = json.load(recipeFile)
@@ -39,8 +65,25 @@ class TastyVideoDataset(data.Dataset):
                         # Get corresponding step text
                         steps.append(recipe_dict["steps"][count])
                     count+=1
+
                 # Remove duplicate ingredients
                 ingredients = list(set(recipe_dict["ingredients"]))
+                '''
+                # Check if all ingredients exist in vocabulary
+                num_ing_missing = 0
+                missing_ing = []
+                ing_single_words = []
+                for ing in ingredients:
+                    split_ing = ing.split(' ')
+                    ing_single_words.extend(split_ing)
+                for v in ing_single_words:
+                    if v not in id_dict_decoded.values():
+                        num_ing_missing +=1
+                        missing_ing.append(v)
+                if num_ing_missing != 0:
+                    print(name, num_ing_missing)
+                    print(missing_ing)
+                '''
                 self.files[split].append({
                     "frames": frames,
                     "sentences": steps,
@@ -67,11 +110,22 @@ class TastyVideoDataset(data.Dataset):
                 np3ch = np.moveaxis(np3ch, -1, 0)
                 interval_frames.append(np3ch)
             frames.append(np.array(interval_frames))
+
+        ingredient_words = datafiles["ingredients"]
+        ingredients = []
+        for ing in ingredient_words:
+            split_ing = ing.split(' ')
+            # Sum embedding across words in an ingredient
+            # TODO: replace zero vector with UNK embedding
+            embeds = np.sum([self.embed_dict.get(i, [0] * 100) for i in split_ing], axis=0)
+            ingredients.append(embeds)
+        ingredients = torch.FloatTensor(ingredients)
+
         #print("num intervals ", len(frames))
         #print("shape of intervals ", [frames[i].shape for i in range(len(frames))])
         #print("len sentences ", len(datafiles["sentences"]))
-        #print("len ingredients ", len(datafiles["ingredients"]))
-        return frames, datafiles["sentences"], datafiles["ingredients"]
+        #print("shape ingredients ", ingredients.shape)
+        return frames, datafiles["sentences"], ingredients
 
 
 
