@@ -53,7 +53,7 @@ class RECIPE1M:
                 print(counter_rec)
 
             # TODO: REMOVE DEBUG LINES when not debugging
-            #if counter_rec % 1000 == 0:
-            #    break
+            if counter_rec % 1000 == 0:
+                break
 
         print('total number of recipes in Recipe1M: ' + str(counter_rec))

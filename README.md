@@ -5,4 +5,4 @@ You can use pip install torch to install pytorch. The version that gets installe
 
 # Training video encoder
 
-python train_ce.py --vocab_ing datasets/new_vocab_ing_3769.pkl --video_encoder True --batch_size 2
+python train_ce.py --vocab_ing data/new_vocab_ing_3769.pkl --video_encoder True --batch_size 1

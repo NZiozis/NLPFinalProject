@@ -101,6 +101,7 @@ if __name__ == "__main__":
     recipe_path =  'ALL_RECIPES_without_videos/'
     all_recipes = [all_recipes.rstrip('\n')    for all_recipes  in open( 'ALL_RECIPES.txt')]
 
+    all_dicts = dict()
     for kki in range( len(all_recipes) ):
 
         src_xml   = recipe_path +   all_recipes[kki]   + '/recipe.xml'
@@ -136,7 +137,10 @@ if __name__ == "__main__":
                        "split": split,
                        "ingredients": recipe_ingredients,
                        "steps": recipe_steps,
-                       "annotations": recipe_annotations  }
-        with open('recipes_processed.txt', 'a') as json_file:
-            json.dump(recipe_dict, json_file)
+                       "annotations": recipe_annotations}
+        all_dicts[recipe_title] = recipe_dict
+        #with open('recipes_processed.txt', 'a') as json_file:
+        #    json.dump(recipe_dict, json_file)
+    with open('all_recipes_processed.txt', 'a') as allFile:
+        json.dump(all_dicts, allFile)
 

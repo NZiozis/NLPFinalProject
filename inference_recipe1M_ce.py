@@ -14,8 +14,6 @@ from Vocabulary import Vocabulary
 
 import sys
 
-# COMP_PATH = '/home/sener/share/RecipeJournal/'
-#COMP_PATH = '/mnt/teufelskapelle/RecipeJournal/'
 COMP_PATH = '/home/cristinam/cse538/project'
 
 sys.path.insert(0, (COMP_PATH + 'LIBS/coco-caption/'))

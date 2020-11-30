@@ -68,9 +68,10 @@ class BLSTMprojEncoder(nn.Module):
             sent = sent.index_select(1, idx_sort)  # sent --> [Ns, Nb, 256]
 
         # Handling padding in Recurrent Networks
-        #import pdb
-        #pdb.set_trace()
-        sent_packed = hotfix_pack_padded_sequence(sent, sent_len)
+        if type(sent_len) == torch.Tensor:
+            sent_packed = nn.utils.rnn.pack_padded_sequence(sent, sent_len)
+        else:
+            sent_packed = hotfix_pack_padded_sequence(sent, sent_len)
         #sent_packed = nn.utils.rnn.pack_padded_sequence(sent, sent_len)
         # [0] --> [NbxNs, 256]  #[1] --> Ns
         sent_out = self.enc_lstm(sent_packed)[0]

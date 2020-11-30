@@ -99,6 +99,7 @@ def train(args, name_repo):
                 recipes_v = pad_packed_sequence(recipes_v_pckd, batch_first=True)[0]  # [N, rec_lens[0], 1024]
 
                 """ 2. encode ingredient """
+                print("ingredients_v nonzero ", ingredients_v.nonzero())
                 ingredient_feats = encoder_ingredient(ingredients_v).unsqueeze(1)  # [N, 1, 1024]
 
                 """ 3. encode recipe """
@@ -143,11 +144,11 @@ def train(args, name_repo):
         
         # Case where we just have the video encoder
         else:
-            for i, (inputs, sentences_v, ingredients_v) in enumerate(train_loader):
-                inputs = [j.float().cuda() for j in inputs]
+            for i, (vid_intervals, sentences_v, ingredients_v) in enumerate(train_loader):
+                # Get video encoder features for each sentence in recipe
+                vid_intervals = [j.float().cuda() for j in vid_intervals]
 
-                # Sentences_v will be the video data for each sentence
-                recipes_v = [encoder_video(j) for j in inputs]
+                recipes_v = [encoder_video(j) for j in vid_intervals]
                 recipes_v = torch.stack(recipes_v)
                 recipes_v = recipes_v.permute(1, 0, 2) # (batch_size, num_sentences, hidden_dim)
 
@@ -241,7 +242,8 @@ def ids2words(vocab, target_ids):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    name_repo = 'retrain_video_enc'
+    #name_repo = 'retrain_video_enc'
+    name_repo = 'retrain_sentence_enc'
 
     # TODO: Move DATA to same folder as code
     intermediate_fd = '/home/cristinam/cse538/project/saved_models/'+name_repo+'/'
