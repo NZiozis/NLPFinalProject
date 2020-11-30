@@ -45,7 +45,7 @@ class TastyVideoDataset(data.Dataset):
                     "frames": frames,
                     "sentences": steps,
                     "ingredients": ingredients
-                    })
+                })
 
 
     def __len__(self):

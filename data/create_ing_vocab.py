@@ -1,3 +1,6 @@
+"""
+Creates ingredient's Vocabulary object for Recipe1M ingredients
+"""
 import pickle
 import sys
 sys.path.append("..")
