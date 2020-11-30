@@ -1,4 +1,5 @@
 import json
+import codecs
 
 if __name__ == "__main__":
 	# Get list of all ingredient words
@@ -11,17 +12,16 @@ if __name__ == "__main__":
 		ingredient_words.update(ing)
 	print("Number of ingredients: ", len(ingredient_words))
 
-	# Check if ingredients in id2word_tasty dict
-	only_words = []
-	with open('Tasty_Videos_Dataset/id2word_tasty.txt', 'r') as idFile:
-		words = idFile.readlines()
-	words = words[0]
-	split_entries = words.split('\'')
-	for entry in split_entries:
-		if entry[0].isalnum():
-			only_words.append(entry)
-	# TODO: Clean elements of punctuation
-	with open('all_words.txt', 'w') as txtFile:
-		for elt in only_words:
-			txtFile.write(elt+'\n')
+	# Create dictionary with decoded values
+	with open('Tasty_Videos_Dataset/id2word_tasty.txt', 'rb') as idFile:
+		data = idFile.read()
+	id_dict = eval(data)
+	id_dict_decoded = dict()
+	for key, val in id_dict.items():
+		id_dict_decoded[key] = codecs.decode(val)
+
+	# Create text file with decoded values on each line
+	with open('all_words_codecs.txt', 'w') as txtFile:
+		for val in id_dict_decoded.values():
+			txtFile.write(val+'\n')
 	txtFile.close()
