@@ -41,6 +41,11 @@ class TastyVideoDataset(data.Dataset):
             float_list = [float(i) for i in spl[1:-1]]
             self.embed_dict[spl[0]] = float_list
 
+        # Load ingredient dict
+        with open('data/ingredient_dict.json', 'r') as ingDictFile:
+            self.ingredient_dict = json.load(ingDictFile)
+        self.num_ingredients = len(self.ingredient_dict.keys())
+
         # Load word dict
         with open('data/Tasty_Videos_Dataset/id2word_tasty.txt', 'rb') as idFile:
             data = idFile.read()
@@ -56,12 +61,16 @@ class TastyVideoDataset(data.Dataset):
             if recipe_dict["split"] == self.split:
                 frames, steps = [], []
                 count = 0
+                max_num_frames = len(os.listdir(os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames')))
                 for elt in recipe_dict["annotations"]:
                     # Check if interval exists
                     if len(elt) == 2:
                         start, end = elt[0], elt[1]
+                        # If end interval is larger than max number of frames in folder, set it to max
+                        if max_num_frames < end:
+                            end = max_num_frames-1
                         # Get video frames spaced every 10 frames in range
-                        frames.append([os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 10)])
+                        frames.append([os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 20)])
                         # Get corresponding step text
                         steps.append(recipe_dict["steps"][count])
                     count+=1
@@ -111,21 +120,33 @@ class TastyVideoDataset(data.Dataset):
                 interval_frames.append(np3ch)
             frames.append(np.array(interval_frames))
 
+        # Ingredient vector has 1's at index of each ingredient
         ingredient_words = datafiles["ingredients"]
+        ingredient_indices = [self.ingredient_dict[ing] for ing in ingredient_words]
         ingredients = []
-        for ing in ingredient_words:
-            split_ing = ing.split(' ')
-            # Sum embedding across words in an ingredient
-            # TODO: replace zero vector with UNK embedding
-            embeds = np.sum([self.embed_dict.get(i, [0] * 100) for i in split_ing], axis=0)
-            ingredients.append(embeds)
+        count = 0
+        while count < self.num_ingredients:
+            if count in ingredient_indices:
+                ingredients.append(1)
+            else:
+                ingredients.append(0)
+            count+=1
         ingredients = torch.FloatTensor(ingredients)
+
+        steps_words = datafiles["sentences"]
+        steps = []
+        for step in steps_words:
+            split_step = step.split(' ')
+            # TODO: replace zero vector with UNK embedding
+            embeds = [self.embed_dict.get(i, [0] * 100) for i in split_step]
+            steps.append(torch.FloatTensor(embeds))
 
         #print("num intervals ", len(frames))
         #print("shape of intervals ", [frames[i].shape for i in range(len(frames))])
-        #print("len sentences ", len(datafiles["sentences"]))
+        #print("len steps ", len(steps))
+        #print("shape of steps ", [steps[i].shape for i in range(len(steps))])
         #print("shape ingredients ", ingredients.shape)
-        return frames, datafiles["sentences"], ingredients
+        return frames, steps, ingredients
 
 
 

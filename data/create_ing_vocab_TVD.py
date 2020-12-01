@@ -1,18 +1,29 @@
 import json
 import codecs
-import Vocabulary as Vocabulary
 
 
 if __name__ == "__main__":
+
+    ''' # Uncomment this block to get dictionary containing ingredients
     # Get list of all ingredient words
     with open('Tasty_Videos_Dataset/all_recipes_processed.txt', 'r') as recipeFile:
         recipe_data = json.load(recipeFile)
-
     ingredient_words = set()
     for name, recipe_dict in recipe_data.items():
         ing = recipe_dict["ingredients"]
         ingredient_words.update(ing)
     print("Number of ingredients: ", len(ingredient_words))
+    # Create file with dictionary mapping ingredient to index from 0 -> number ingredients
+    ingredient_dict = dict()
+    idx = 0
+    for i in ingredient_words:
+        ingredient_dict[i] = idx
+        idx+=1
+    json = json.dumps(ingredient_dict)
+    f = open("ingredient_dict.json","w")
+    f.write(json)
+    f.close()
+    '''
 
     # Create dictionary with decoded values
     with open('Tasty_Videos_Dataset/id2word_tasty.txt', 'rb') as idFile:
@@ -28,9 +39,8 @@ if __name__ == "__main__":
     #       txtFile.write(val+'\n')
     #txtFile.close()
 
-    # Create Vocabulary object for Tasty Videos Dataset
-    vocab = Vocabulary()
-    with open('fasttext_embeds.txt', 'r') as embedFile:
+
+    with open('fasttext_embeds_codecs.txt', 'r') as embedFile:
         embeds = embedFile.readlines()
     # Create dictionary mapping word to embedding vector (Python list of strings of floats)
     embed_dict = dict()
@@ -38,6 +48,3 @@ if __name__ == "__main__":
         split = embed.split(' ')
         embed_dict[split[0]] = split[1:-1]
 
-    # Create word2idx mapping the key for each word in id_dict_decoded to the index in the embeddings file
-    word2idx = dict()
-        

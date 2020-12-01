@@ -78,10 +78,10 @@ def collate_fn(data):
            torch.LongTensor(indices), torch.LongTensor(indices_encoder)
 
 
-def get_loader(args, batch_size, vocab, shuffle, num_workers):
-    """Returns torch.utils.data.DataLoader for custom Recipe1M dataset."""
+def get_loader(args, batch_size, vocab, shuffle, num_workers, use_video=False):
+    """Returns torch.utils.data.DataLoader for custom Recipe1M or TVD dataset."""
 
-    if args.video_encoder:
+    if use_video:
         tasty_videos = TastyVideoDataset()
         data_loader = torch.utils.data.DataLoader(dataset=tasty_videos,
                                               batch_size=batch_size,

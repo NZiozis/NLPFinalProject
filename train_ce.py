@@ -6,6 +6,8 @@ from datasets.data_loader import get_loader
 from models.model_ce import EncoderINGREDIENT, EncoderRECIPE, DecoderSENTENCES
 from models.model_ce import BLSTMprojEncoder, SP_EMBEDDING
 from models.video_encoder import VideoEncoder
+from models.ingredient_encoder import IngredientEncoder
+from models.sentence_decoder import SentenceDecoder
 from torch.nn.utils.rnn import pack_sequence
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import pickle
@@ -35,15 +37,17 @@ def train(args, name_repo):
     # Build the models
     embed_words = SP_EMBEDDING(args).to(device)
     encoder_recipe = EncoderRECIPE(args).to(device)
-    decoder_sentences = DecoderSENTENCES(args).to(device)
-    encoder_ingredient = EncoderINGREDIENT(args).to(device)
     
     if args.video_encoder:
         # Build video encoder
         encoder_video = VideoEncoder(args.sentEnd_hiddens).to(device)
         encoder_sentences = None
+        encoder_ingredient = IngredientEncoder(1024, 3925)
+        decoder_sentences = SentenceDecoder(args)
     else:
         encoder_sentences = BLSTMprojEncoder(args).to(device)
+        encoder_ingredient = EncoderINGREDIENT(args).to(device)
+        decoder_sentences = DecoderSENTENCES(args).to(device)
         encoder_video = None
 
     # Loss and optimizer
@@ -99,7 +103,6 @@ def train(args, name_repo):
                 recipes_v = pad_packed_sequence(recipes_v_pckd, batch_first=True)[0]  # [N, rec_lens[0], 1024]
 
                 """ 2. encode ingredient """
-                print("ingredients_v nonzero ", ingredients_v.nonzero())
                 ingredient_feats = encoder_ingredient(ingredients_v).unsqueeze(1)  # [N, 1, 1024]
 
                 """ 3. encode recipe """
@@ -152,18 +155,17 @@ def train(args, name_repo):
                 recipes_v = torch.stack(recipes_v)
                 recipes_v = recipes_v.permute(1, 0, 2) # (batch_size, num_sentences, hidden_dim)
 
-                # Use empty ingredients list
-                ingredient_feats = torch.zeros((args.batch_size, 1, 1024)).float().cuda()
+                # Get ingredient features using ingredient encoder
+                ingredient_feats = encoder_ingredient(ingredients_v).unsqueeze(0)
+                ingredient_feats = ingredient_feats.cuda()
                 rec_lens = torch.tensor([recipes_v.shape[1]])
+                sent_lens = torch.tensor([recipes_v.shape[i][0] for i in range(len(recipes_v))]).cuda()
 
                 if epoch >= 5:
                     use_teacherF = random.random() < (0.5)
                 recipe_enc = encoder_recipe(ingredient_feats, recipes_v, rec_lens, use_teacherF)  # [Nb, 1024]
 
-                idx = Variable(indices).cuda()
-                recipe_enc = recipe_enc.index_select(0, idx)  # [Nb, 1024]
-
-                sentence_dec = decoder_sentences(recipe_enc, word_embs, sent_lens)
+                sentence_dec = decoder_sentences(recipe_enc, sent_lens)
                 # [sum(sent_lens), Nw] -- Nw = number of words in the vocabulary
 
                 sentence_target = pack_padded_sequence(sentences_v, sent_lens, batch_first=True)[0]  # [ sum(sent_lens) ]
