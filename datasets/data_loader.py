@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import torch
 import torch.utils.data as data
+from torch.nn.utils.rnn import pad_sequence
 from .RECIPE1M import RECIPE1M
 from .video_datasets import TastyVideoDataset
 
@@ -76,6 +77,16 @@ def collate_fn(data):
 
     return ingredients_v, lengths, captions_v, torch.LongTensor(lengths_captions), \
            torch.LongTensor(indices), torch.LongTensor(indices_encoder)
+
+def collate_function_video(data):
+    """ Creates collate function for Tasty Video Dataset.
+    Extends steps tensor so that uneven sentence lengths fit into Tensor.
+    @arg data (tuple): (frames, steps, ingredients) where steps is a list of FloatTensors of different lengths
+    """
+    (frames, steps, ingredients) = data
+    
+    return frames, pad_sequence(steps), ingredients
+
 
 
 def get_loader(args, batch_size, vocab, shuffle, num_workers, use_video=False):

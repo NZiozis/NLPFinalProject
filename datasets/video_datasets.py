@@ -70,9 +70,11 @@ class TastyVideoDataset(data.Dataset):
                         if max_num_frames < end:
                             end = max_num_frames-1
                         # Get video frames spaced every 10 frames in range
-                        frames.append([os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 20)])
-                        # Get corresponding step text
-                        steps.append(recipe_dict["steps"][count])
+                        frames_list = [os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 20)]
+                        if len(frames_list) > 0:
+                            frames.append(frames_list)
+                            # Get corresponding step text
+                            steps.append(recipe_dict["steps"][count])
                     count+=1
 
                 # Remove duplicate ingredients
@@ -133,20 +135,24 @@ class TastyVideoDataset(data.Dataset):
             count+=1
         ingredients = torch.FloatTensor(ingredients)
 
+        # Get word embeddings for every word in each step sentence
         steps_words = datafiles["sentences"]
-        steps = []
+        steps_embeds = []
         for step in steps_words:
             split_step = step.split(' ')
             # TODO: replace zero vector with UNK embedding
             embeds = [self.embed_dict.get(i, [0] * 100) for i in split_step]
-            steps.append(torch.FloatTensor(embeds))
+            steps_embeds.append(torch.FloatTensor(embeds))
+
+        # TODO: Get indices in vocab for each word in each sentence
+        steps = None
 
         #print("num intervals ", len(frames))
         #print("shape of intervals ", [frames[i].shape for i in range(len(frames))])
         #print("len steps ", len(steps))
         #print("shape of steps ", [steps[i].shape for i in range(len(steps))])
         #print("shape ingredients ", ingredients.shape)
-        return frames, steps, ingredients
+        return frames, steps, steps_embeds, ingredients
 
 
 

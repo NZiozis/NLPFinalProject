@@ -162,7 +162,8 @@ class DecoderSENTENCES(nn.Module):
         # len(sent_lens)  --> Nb
 
         features = self.linear_project(recipe_enc)  # [Nb, 256]
-        word_embs = torch.cat((features.unsqueeze(1), word_embs), 1)  # torch.Size([Nb, Ns + 1, 256])
+        features = features.unsqueeze(1)
+        word_embs = torch.cat((features, word_embs), 1)  # torch.Size([Nb, Ns + 1, 256])
         packed = pack_padded_sequence(word_embs, sent_lens, batch_first=True)
         # [0] -> [sum(sent_lens), 256]   [1] -> [sent_lens[0]]
 

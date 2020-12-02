@@ -9,7 +9,7 @@ from models.video_encoder import VideoEncoder
 from models.ingredient_encoder import IngredientEncoder
 from models.sentence_decoder import SentenceDecoder
 from models.recipe_encoder import RecipeEncoder
-from torch.nn.utils.rnn import pack_sequence
+from torch.nn.utils.rnn import pack_sequence, pad_sequence
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import pickle
 from torch.autograd import Variable
@@ -61,9 +61,10 @@ def train(args, name_repo):
     for epoch in range(args.num_epochs):
         epoch_loss_all = 0
 
-        for i, (vid_intervals, sentences_v, ingredients_v) in enumerate(train_loader):
+        for i, (vid_intervals, sentences_indices, sentences_v, ingredients_v) in enumerate(train_loader):
             # Get video encoder features for each sentence in recipe
             vid_intervals = [j.float().cuda() for j in vid_intervals]
+            sentences_v = [j.float().cuda() for j in sentences_v]
 
             recipes_v = [encoder_video(j) for j in vid_intervals]
             recipes_v = torch.stack(recipes_v)
@@ -78,13 +79,18 @@ def train(args, name_repo):
             if epoch >= 5:
                 use_teacherF = random.random() < (0.5)
             recipe_enc = encoder_recipe(ingredient_feats, recipes_v, rec_lens, use_teacherF)  # [Nb, 1024]
-            print("recipe enc shape ", recipe_enc.shape)
-
-            sentence_dec = decoder_sentences(recipe_enc, sent_lens)
+            recipe_enc = recipe_enc.unsqueeze(0)
+            
+            sentences_v = [elt.squeeze(0) for elt in sentences_v]
+            sentences_v = pad_sequence(sentences_v, batch_first=True)
+            sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_v)
             # [sum(sent_lens), Nw] -- Nw = number of words in the vocabulary
 
-            sentence_target = pack_padded_sequence(sentences_v, sent_lens, batch_first=True)[0]  # [ sum(sent_lens) ]
-
+            sentence_target = pack_padded_sequence(sentences_indices, sent_lens, batch_first=True, enforce_sorted=False)[0]  # [ sum(sent_lens) ]
+            sentence_target = sentence_target.type(torch.LongTensor)
+            sentence_target = sentence_target.cuda()
+            print("sentence dec ", sentence_dec.shape)
+            print("sentence target ", sentence_target.shape)
             all_loss = criterion_sent(sentence_dec, sentence_target)
             epoch_loss_all += all_loss
 
