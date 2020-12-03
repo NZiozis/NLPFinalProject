@@ -86,11 +86,12 @@ def train(args, name_repo):
             sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_v)
             # [sum(sent_lens), Nw] -- Nw = number of words in the vocabulary
 
+            sentences_indices = [elt.squeeze(0) for elt in sentences_indices]
+            sentences_indices = pad_sequence(sentences_indices, batch_first=True)
             sentence_target = pack_padded_sequence(sentences_indices, sent_lens, batch_first=True, enforce_sorted=False)[0]  # [ sum(sent_lens) ]
             sentence_target = sentence_target.type(torch.LongTensor)
             sentence_target = sentence_target.cuda()
-            print("sentence dec ", sentence_dec.shape)
-            print("sentence target ", sentence_target.shape)
+
             all_loss = criterion_sent(sentence_dec, sentence_target)
             epoch_loss_all += all_loss
 
@@ -168,8 +169,8 @@ if __name__ == '__main__':
     intermediate_fd = '/home/cristinam/cse538/project/saved_models/'+name_repo+'/'
 
     # model parameters
-    parser.add_argument('--vocab_len', type=int, default=30171, help='')
-    parser.add_argument('--inredient_dim', type=int, default=3769, help='')
+    parser.add_argument('--vocab_len', type=int, default=12269, help='')
+    parser.add_argument('--inredient_dim', type=int, default=3925, help='')
     parser.add_argument('--word_dim', type=int, default=256, help='')
     parser.add_argument('--sentEnd_hiddens', type=int, default=512, help='')
     parser.add_argument('--sentEnd_nlayers', type=int, default=1, help='')

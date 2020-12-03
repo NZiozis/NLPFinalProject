@@ -46,6 +46,11 @@ class TastyVideoDataset(data.Dataset):
             self.ingredient_dict = json.load(ingDictFile)
         self.num_ingredients = len(self.ingredient_dict.keys())
 
+        # Load steps words dict
+        with open('data/steps_vocab_dict.json', 'r') as stepsDictFile:
+            self.steps_vocab_dict = json.load(stepsDictFile)
+        self.vocab_size = len(self.steps_vocab_dict.keys())
+
         # Load word dict
         with open('data/Tasty_Videos_Dataset/id2word_tasty.txt', 'rb') as idFile:
             data = idFile.read()
@@ -137,22 +142,24 @@ class TastyVideoDataset(data.Dataset):
 
         # Get word embeddings for every word in each step sentence
         steps_words = datafiles["sentences"]
-        steps_embeds = []
+        steps_embeds, steps_indices = [], []
         for step in steps_words:
             split_step = step.split(' ')
             # TODO: replace zero vector with UNK embedding
             embeds = [self.embed_dict.get(i, [0] * 100) for i in split_step]
             steps_embeds.append(torch.FloatTensor(embeds))
-
-        # TODO: Get indices in vocab for each word in each sentence
-        steps = None
+            # Also get index of words from step
+            indices = [self.steps_vocab_dict[i] for i in split_step]
+            steps_indices.append(torch.FloatTensor(indices))
 
         #print("num intervals ", len(frames))
         #print("shape of intervals ", [frames[i].shape for i in range(len(frames))])
         #print("len steps ", len(steps))
         #print("shape of steps ", [steps[i].shape for i in range(len(steps))])
         #print("shape ingredients ", ingredients.shape)
-        return frames, steps, steps_embeds, ingredients
+        #print("len steps indices ", len(steps_indices))
+        #print("shape steps indices ", [i.shape for i in steps_indices])
+        return frames, steps_indices, steps_embeds, ingredients
 
 
 

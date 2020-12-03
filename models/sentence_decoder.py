@@ -10,7 +10,7 @@ class SentenceDecoder(nn.Module):
         # Set this to size of word/ingredient embeddings -> 100 for now
         self.word_dim = 100
         self.sentDec_hiddens = args.sentDec_hiddens
-        self.vocab_len = args.vocab_len
+        self.vocab_len = 12269
         self.sentDec_nlayers = args.sentDec_nlayers
 
         self.lstm = nn.LSTM(self.word_dim, self.sentDec_hiddens, self.sentDec_nlayers, batch_first=True)

@@ -25,6 +25,30 @@ if __name__ == "__main__":
     f.close()
     '''
 
+    ''' # Uncomment this block to get dictionary containing steps
+    # Get list of all step words
+    with open('Tasty_Videos_Dataset/all_recipes_processed.txt', 'r') as recipeFile:
+        recipe_data = json.load(recipeFile)
+    steps_words = set()
+    for name, recipe_dict in recipe_data.items():
+        steps = recipe_dict["steps"]
+        for step in steps:
+            split_step = step.split(' ')
+            steps_words.update(split_step)
+    print("Number of words in steps: ", len(steps_words))
+    # Create file with dictionary mapping words in recipe steps to index from 0 -> number words
+    steps_dict = dict()
+    idx = 0
+    for i in steps_words:
+        steps_dict[i] = idx
+        idx+=1
+    json = json.dumps(steps_dict)
+    f = open("steps_vocab_dict.json","w")
+    f.write(json)
+    f.close()
+    '''
+    
+
     # Create dictionary with decoded values
     with open('Tasty_Videos_Dataset/id2word_tasty.txt', 'rb') as idFile:
         data = idFile.read()
