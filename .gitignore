@@ -1,2 +1,3 @@
 env
-glove.840B.300d.txt
+glove_embeds.txt
+get_embeds.sh
