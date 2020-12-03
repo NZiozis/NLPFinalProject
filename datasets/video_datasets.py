@@ -10,21 +10,24 @@ import json
 import codecs
 
 class TastyVideoDataset(data.Dataset):
-    '''
-    @param root (str): Path to root directory for Tasty Video Dataset
-    @param split (str): Can be 'train' or 'test'
-    @param img_transform (torch.Transform): Apply a Pytorch image transformation to all images
-    '''
+    """ Implements Pytorch dataset for training baseline and joint models on the Tasty Video Dataset
+    """
     def __init__(self, root='/nfs/bigiris/cristinam/Tasty_Videos_Dataset', split="train", embedding_type='fasttext', img_transform=None):
+        '''
+        @param root (str): Path to root directory for Tasty Video Dataset
+        @param split (str): Can be 'train', 'val' or 'test'
+        @param embedding_type (str): Specifies what type of word embeddings to use. Can be 'fasttext' or 'glove'.
+        @param img_transform (torch.Transform): Apply a Pytorch image transformation to all images
+        '''
         assert split in ["train", "val", "test"]
         self.root = root
         self.split = split
-        # self.mean_bgr = np.array([104.00698793, 116.66876762, 122.67891434])
         self.files = collections.defaultdict(list)
         self.img_transform = img_transform
+        # Define the spatial resolution of the images
         self.crop_size = 256
 
-        # Load embeddings file
+        # Load word embeddings file
         if embedding_type == 'fasttext':
             with open('data/fasttext_embeds_codecs.txt', 'r') as embedFile:
                 embeds = embedFile.readlines()
@@ -34,7 +37,8 @@ class TastyVideoDataset(data.Dataset):
         else:
             print("Embedding type ", embedding_type, " not supported")
             embeds = None
-        # Create dictionary mapping word to embedding vector
+
+        # Create dictionary mapping word (str) to embedding vector
         self.embed_dict = dict()
         for embed in embeds:
             spl = embed.split(' ')
@@ -51,14 +55,7 @@ class TastyVideoDataset(data.Dataset):
             self.steps_vocab_dict = json.load(stepsDictFile)
         self.vocab_size = len(self.steps_vocab_dict.keys())
 
-        # Load word dict
-        with open('data/Tasty_Videos_Dataset/id2word_tasty.txt', 'rb') as idFile:
-            data = idFile.read()
-        id_dict = eval(data)
-        id_dict_decoded = dict()
-        for key, val in id_dict.items():
-            id_dict_decoded[key] = codecs.decode(val)
-
+        # Load recipes from the dataset
         with open('data/Tasty_Videos_Dataset/all_recipes_processed.txt', 'r') as recipeFile:
             recipe_dicts = json.load(recipeFile)
 
@@ -74,7 +71,7 @@ class TastyVideoDataset(data.Dataset):
                         # If end interval is larger than max number of frames in folder, set it to max
                         if max_num_frames < end:
                             end = max_num_frames-1
-                        # Get video frames spaced every 10 frames in range
+                        # Get video frames spaced every 30 frames in range
                         frames_list = [os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 30)]
                         if len(frames_list) > 0:
                             frames.append(frames_list)
@@ -84,22 +81,11 @@ class TastyVideoDataset(data.Dataset):
 
                 # Remove duplicate ingredients
                 ingredients = list(set(recipe_dict["ingredients"]))
-                '''
-                # Check if all ingredients exist in vocabulary
-                num_ing_missing = 0
-                missing_ing = []
-                ing_single_words = []
-                for ing in ingredients:
-                    split_ing = ing.split(' ')
-                    ing_single_words.extend(split_ing)
-                for v in ing_single_words:
-                    if v not in id_dict_decoded.values():
-                        num_ing_missing +=1
-                        missing_ing.append(v)
-                if num_ing_missing != 0:
-                    print(name, num_ing_missing)
-                    print(missing_ing)
-                '''
+
+                # Add recipe sample to dataset:
+                # frames is a list of lists. Each nonempty list contains file paths to frames corresponding to a recipe step.
+                # steps is a list of strings, one string for each recipe step.
+                # ingredients is a list of strings, one for each ingredient in the recipe.
                 self.files[split].append({
                     "frames": frames,
                     "sentences": steps,
@@ -111,6 +97,21 @@ class TastyVideoDataset(data.Dataset):
         return len(self.files[self.split])
 
     def __getitem__(self, index):
+        '''
+        @return (frames, steps_indices, steps_embeds, ingredients) where
+        frames is a list of lists. Each list contains numpy arrays for resized frames corresponding to a recipe step, i.e.,
+        frames = [[frame1_recipestep1, frame2_recipestep1, ...], [frame1_recipestep2, frame2_recipestep2], ...]
+        
+        steps_indices is a list of torch.FloatTensor. Each Tensor contains indices of words in the vocabulary, i.e.,
+        steps_indices = [[recipestep1_word1_index, recipestep1_word2_index, ...], [recipestep2_word1_index, recipestep2_word2_index, ...], ...]
+
+        steps_embeds is a list of lists of torch.FloatTensors. Each Tensor contains word embedding, i.e.,
+        steps_embeds = [[recipestep1_word1_embedding, recipestep1_word2_embedding, ...], [recipestep2_word1_embedding, recipestep2_word2_embedding, ...], ...]
+        
+        ingredients is a torch.FloatTensor with 1 at index of ingredient in recipe and 0 otherwise, i.e.,
+        ingredients = torch.FloatTensor([0, 0, ..., 1, 0, 1, ...])
+        If ingredients has a 1 at index N then the ingredient corresponding to index N is in the recipe.
+        '''
         datafiles = self.files[self.split][index]
         frames = []
         for interval in datafiles["frames"]:
@@ -152,13 +153,6 @@ class TastyVideoDataset(data.Dataset):
             indices = [self.steps_vocab_dict[i] for i in split_step]
             steps_indices.append(torch.FloatTensor(indices))
 
-        #print("num intervals ", len(frames))
-        #print("shape of intervals ", [frames[i].shape for i in range(len(frames))])
-        #print("len steps ", len(steps))
-        #print("shape of steps ", [steps[i].shape for i in range(len(steps))])
-        #print("shape ingredients ", ingredients.shape)
-        #print("len steps indices ", len(steps_indices))
-        #print("shape steps indices ", [i.shape for i in steps_indices])
         return frames, steps_indices, steps_embeds, ingredients
 
 

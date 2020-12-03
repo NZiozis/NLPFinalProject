@@ -41,15 +41,17 @@ def train(args, name_repo):
     encoder_video = VideoEncoder(args.sentEnd_hiddens).to(device)
     encoder_ingredient = IngredientEncoder(1024, 3925)
     decoder_sentences = SentenceDecoder(args).to(device)
+    encoder_sentences = BLSTMprojEncoder(args).to(device)
 
     # Loss and optimizer
     criterion_sent = nn.CrossEntropyLoss()
     params = list(embed_words.parameters()) + \
-             list(encoder_recipe.parameters()) + \
-             list(decoder_sentences.parameters()) + \
              list(encoder_ingredient.parameters()) + \
-             list(encoder_video.parameters())
-
+             list(encoder_video.parameters()) + \
+             list(encoder_sentences.parameters) + \
+             list(encoder_recipe.parameters()) + \
+             list(decoder_sentences.parameters())
+             
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
     # Build data loader
