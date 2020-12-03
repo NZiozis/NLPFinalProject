@@ -75,7 +75,7 @@ class TastyVideoDataset(data.Dataset):
                         if max_num_frames < end:
                             end = max_num_frames-1
                         # Get video frames spaced every 10 frames in range
-                        frames_list = [os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 20)]
+                        frames_list = [os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 30)]
                         if len(frames_list) > 0:
                             frames.append(frames_list)
                             # Get corresponding step text
