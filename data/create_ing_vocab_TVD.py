@@ -47,8 +47,10 @@ if __name__ == "__main__":
     f.write(json)
     f.close()
     '''
-    
 
+    
+    
+    '''
     # Create dictionary with decoded values
     with open('Tasty_Videos_Dataset/id2word_tasty.txt', 'rb') as idFile:
         data = idFile.read()
@@ -56,14 +58,16 @@ if __name__ == "__main__":
     id_dict_decoded = dict()
     for key, val in id_dict.items():
         id_dict_decoded[key] = codecs.decode(val)
+    '''
 
-    # Uncomment to create text file with decoded values on each line
-    #with open('all_words_codecs.txt', 'w') as txtFile:
-    #   for val in id_dict_decoded.values():
-    #       txtFile.write(val+'\n')
-    #txtFile.close()
+    ''' # Uncomment to create text file with decoded values on each line
+    with open('all_words_codecs.txt', 'w') as txtFile:
+       for val in id_dict_decoded.values():
+           txtFile.write(val+'\n')
+    txtFile.close()
+    '''
 
-
+    '''
     with open('fasttext_embeds_codecs.txt', 'r') as embedFile:
         embeds = embedFile.readlines()
     # Create dictionary mapping word to embedding vector (Python list of strings of floats)
@@ -71,4 +75,5 @@ if __name__ == "__main__":
     for embed in embeds:
         split = embed.split(' ')
         embed_dict[split[0]] = split[1:-1]
+    '''
 

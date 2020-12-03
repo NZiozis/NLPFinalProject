@@ -25,7 +25,7 @@ class TastyVideoDataset(data.Dataset):
         self.files = collections.defaultdict(list)
         self.img_transform = img_transform
         # Define the spatial resolution of the images
-        self.crop_size = 256
+        self.crop_size = 128
 
         # Load word embeddings file
         if embedding_type == 'fasttext':
@@ -71,8 +71,8 @@ class TastyVideoDataset(data.Dataset):
                         # If end interval is larger than max number of frames in folder, set it to max
                         if max_num_frames < end:
                             end = max_num_frames-1
-                        # Get video frames spaced every 30 frames in range
-                        frames_list = [os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 30)]
+                        # Get video frames spaced every 50 frames in range
+                        frames_list = [os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 50)]
                         if len(frames_list) > 0:
                             frames.append(frames_list)
                             # Get corresponding step text
@@ -121,7 +121,7 @@ class TastyVideoDataset(data.Dataset):
                 img = img.resize((self.crop_size, self.crop_size))
                 np3ch = np.array(img)
                 # If image is grayscale, convert to "color" by replicating channels
-                if np3ch.shape != (256, 256, 3):
+                if np3ch.shape != (self.crop_size, self.crop_size, 3):
                     np3ch = np3ch.repeat(3,1,1)
                 # Permute dimensions to make channel first
                 np3ch = np.moveaxis(np3ch, -1, 0)

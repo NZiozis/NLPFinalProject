@@ -6,8 +6,9 @@ class VideoEncoder(nn.Module):
 	def __init__(self, input_size=512, lstm_hidden_size=512):
 		super(VideoEncoder, self).__init__()
 
-		self.backbone = torchvision.models.resnet50(pretrained=True)
-		self.backbone.fc = torch.nn.Linear(in_features=2048, out_features=512, bias=True)
+		self.backbone = torchvision.models.resnet18(pretrained=True)
+		#self.backbone.fc = torch.nn.Linear(in_features=2048, out_features=512, bias=True) # For resnet 50
+		self.backbone.fc = torch.nn.Linear(in_features=512, out_features=512, bias=True) # For resnet34 or resnet18
 		self.lstm = nn.LSTM(input_size=512, hidden_size=512, batch_first=True, bidirectional=True)
 		self.maxpool = nn.MaxPool1d(kernel_size=1024)
 

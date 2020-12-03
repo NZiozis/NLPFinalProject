@@ -3,8 +3,7 @@ import torch
 import torch.nn as nn
 import os
 from datasets.data_loader import get_loader
-from models.model_ce import EncoderINGREDIENT, EncoderRECIPE, DecoderSENTENCES
-from models.model_ce import BLSTMprojEncoder, SP_EMBEDDING
+from models.sentence_encoder import SentenceEncoder
 from models.video_encoder import VideoEncoder
 from models.ingredient_encoder import IngredientEncoder
 from models.sentence_decoder import SentenceDecoder
@@ -36,19 +35,18 @@ def train(args, name_repo):
     out_dir = args.model_path
 
     # Build the models
-    embed_words = SP_EMBEDDING(args).to(device)
     encoder_recipe = RecipeEncoder(args).to(device)
     encoder_video = VideoEncoder(args.sentEnd_hiddens).to(device)
     encoder_ingredient = IngredientEncoder(1024, 3925)
     decoder_sentences = SentenceDecoder(args).to(device)
-    encoder_sentences = BLSTMprojEncoder(args).to(device)
+    encoder_sentences = SentenceEncoder(args).to(device)
 
     # Loss and optimizer
     criterion_sent = nn.CrossEntropyLoss()
-    params = list(embed_words.parameters()) + \
-             list(encoder_ingredient.parameters()) + \
+    criterion_latent = nn.CosineEmbeddingLoss()
+    params = list(encoder_ingredient.parameters()) + \
              list(encoder_video.parameters()) + \
-             list(encoder_sentences.parameters) + \
+             list(encoder_sentences.parameters()) + \
              list(encoder_recipe.parameters()) + \
              list(decoder_sentences.parameters())
              
@@ -63,57 +61,79 @@ def train(args, name_repo):
     for epoch in range(args.num_epochs):
         epoch_loss_all = 0
 
-        for i, (vid_intervals, sentences_indices, sentences_v, ingredients_v) in enumerate(train_loader):
-            # Get video encoder features for each sentence in recipe
+        for i, (vid_intervals, sentences_indices, sentences_emb, ingredients_v) in enumerate(train_loader):
             vid_intervals = [j.float().cuda() for j in vid_intervals]
-            sentences_v = [j.float().cuda() for j in sentences_v]
+            sentences_emb = [j.float().cuda() for j in sentences_emb]
+            # Get sizes of sentences in recipes
+            sent_lens = [sentences_emb[i].shape[1] for i in range(len(sentences_emb))]
 
-            recipes_v = [encoder_video(j) for j in vid_intervals]
-            recipes_v = torch.stack(recipes_v)
-            recipes_v = recipes_v.permute(1, 0, 2) # (batch_size, num_sentences, hidden_dim)
+            # Prep word embeddings for sentences
+            sentences_emb = [elt.squeeze(0) for elt in sentences_emb]
+            sentences_emb = pad_sequence(sentences_emb, batch_first=True)
+
+            # Get video encoder features for each sentence in recipe
+            video_features = [encoder_video(j) for j in vid_intervals]
+            video_features = torch.stack(video_features)
+            video_features = video_features.permute(1, 0, 2) # (batch_size, num_sentences, hidden_dim)
+            # Get lengths of recipes
+            rec_lens = torch.tensor([video_features.shape[1]])
+
+            # Get sentence encoder features
+            #print("sentences emb shape ", sentences_emb.shape)
+            sentence_features = encoder_sentences(sentences_emb, sent_lens)
+            #print("sentence features shape ", sentence_features.shape)
+            sentence_features = sentence_features.unsqueeze(0)
+            #print("sentence features shape unsq ", sentence_features.shape)
 
             # Get ingredient features using ingredient encoder
             ingredient_feats = encoder_ingredient(ingredients_v).unsqueeze(0)
             ingredient_feats = ingredient_feats.cuda()
-            rec_lens = torch.tensor([recipes_v.shape[1]])
-            sent_lens = [sentences_v[i].shape[1] for i in range(len(sentences_v))]
 
+            # Get recipe encoder output using features from sentence encoder
             if epoch >= 5:
                 use_teacherF = random.random() < (0.5)
-            recipe_enc = encoder_recipe(ingredient_feats, recipes_v, rec_lens, use_teacherF)  # [Nb, 1024]
+            recipe_enc = encoder_recipe(ingredient_feats, sentence_features, rec_lens, use_teacherF)
             recipe_enc = recipe_enc.unsqueeze(0)
             
-            sentences_v = [elt.squeeze(0) for elt in sentences_v]
-            sentences_v = pad_sequence(sentences_v, batch_first=True)
-            sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_v)
-            # [sum(sent_lens), Nw] -- Nw = number of words in the vocabulary
-
+            # Get sentence decoder output
+            sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_emb)
+            
+            # Construct ground truth from sentences
             sentences_indices = [elt.squeeze(0) for elt in sentences_indices]
             sentences_indices = pad_sequence(sentences_indices, batch_first=True)
-            sentence_target = pack_padded_sequence(sentences_indices, sent_lens, batch_first=True, enforce_sorted=False)[0]  # [ sum(sent_lens) ]
+            sentence_target = pack_padded_sequence(sentences_indices, sent_lens, batch_first=True, enforce_sorted=False)[0]
             sentence_target = sentence_target.type(torch.LongTensor)
             sentence_target = sentence_target.cuda()
 
+            # Calculate losses
             all_loss = criterion_sent(sentence_dec, sentence_target)
-            epoch_loss_all += all_loss
+            # When y = 1 this tells Cosine loss that embeddings should be similar
+            y = torch.Tensor([1]).cuda()
+            embedding_loss = criterion_latent(video_features, sentence_features, y)
+            epoch_loss_all += all_loss + embedding_loss
 
+            encoder_video.zero_grad()
+            encoder_sentences.zero_grad()
             encoder_recipe.zero_grad()
             decoder_sentences.zero_grad()
-            encoder_video.zero_grad()
-            embed_words.zero_grad()
-
+            
             all_loss.backward()
             optimizer.step()
+
+            # Free memory before next loop
+            vid_intervals, sentences_emb, sentences_indices, ingredients_v, \
+            ingredient_feats, video_features, sentence_features, recipe_enc,  \
+            sentence_dec, sentence_target = [], [], [], [], [], [], [], [], [], []
 
             if i % args.log_step == 0:  # Print log info
                 print('Epoch [{}/{}], Step [{}/{}], Loss: {:.10f} '.format(epoch, args.num_epochs, i, total_step,
                                                                            all_loss.item()))
         if (epoch + 1) % 5 == 0:  # Save the model checkpoints
-            save_models(args, (encoder_recipe, decoder_sentences, encoder_video, embed_words),
+            save_models(args, (encoder_recipe, encoder_ingredient, encoder_sentences, decoder_sentences, encoder_video),
                         epoch + 1)
         
     # Save the final models
-    save_models(args, (encoder_recipe, decoder_sentences, encoder_video, embed_words),
+    save_models(args, (encoder_recipe, encoder_ingredient, encoder_sentences, decoder_sentences, encoder_video),
                 epoch + 1)
 
 
@@ -123,7 +143,7 @@ def save_models(args, all_models, epoch_val):
     else:
         num_epochs = '-' + str(epoch_val)
 
-    (encoder_recipe, encoder_ingredient, decoder_sentences, encoder_video, embed_words) = all_models
+    (encoder_recipe, encoder_ingredient, encoder_sentences, decoder_sentences, encoder_video) = all_models
     if not os.path.exists(args.model_path):
         os.makedirs(args.model_path)
     torch.save(encoder_recipe.state_dict(),
@@ -132,12 +152,10 @@ def save_models(args, all_models, epoch_val):
                os.path.join(args.model_path, 'encoder_ingredient{}.ckpt'.format(num_epochs)))
     torch.save(encoder_video.state_dict(),
                os.path.join(args.model_path, 'encoder_video{}.ckpt'.format(num_epochs)))
-    #torch.save(decoder_sentences.state_dict(),
-    #           os.path.join(args.model_path, 'decoder_sentences{}.ckpt'.format(num_epochs)))
+    torch.save(decoder_sentences.state_dict(),
+               os.path.join(args.model_path, 'decoder_sentences{}.ckpt'.format(num_epochs)))
     torch.save(encoder_sentences.state_dict(),
                os.path.join(args.model_path, 'encoder_sentences{}.ckpt'.format(num_epochs)))
-    torch.save(embed_words.state_dict(),
-               os.path.join(args.model_path, 'embed_words{}.ckpt'.format(num_epochs)))
 
 
 def generate(sentences_v, vocab, recipe_enc, decoder_sentences, embed_words):
