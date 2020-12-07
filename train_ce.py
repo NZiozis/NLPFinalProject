@@ -117,7 +117,7 @@ def train(args, name_repo):
                 sentence_dec = decoder_sentences(recipe_enc, word_embs, sent_lens)
                 # [sum(sent_lens), Nw] -- Nw = number of words in the vocabulary
                 sentence_target = pack_padded_sequence(sentences_v, sent_lens, batch_first=True)[0]  # [ sum(sent_lens) ]
-
+                
                 """ Compute the loss """
                 all_loss = criterion_sent(sentence_dec, sentence_target)
                 epoch_loss_all += all_loss

@@ -48,7 +48,18 @@ if __name__ == "__main__":
     f.close()
     '''
 
-    
+    '''# Uncomment this block to get dictionary mapping word index to decoded string
+    with open('steps_vocab_dict.json', 'rb') as stepsDictFile:
+        steps_vocab_dict = json.load(stepsDictFile)
+    idx2word = dict()
+    for k,v in steps_vocab_dict.items():
+        #print("v ", v, " k ", k)
+        idx2word[int(v)] = k #codecs.decode(k)
+    f = open("index_to_vocab.json", "w")
+    jsonDict = json.dumps(idx2word)
+    f.write(jsonDict)
+    f.close()
+    '''
     
     '''
     # Create dictionary with decoded values

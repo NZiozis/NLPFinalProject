@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pack_padded_sequence, pack_sequence
 
 class SentenceDecoder(nn.Module):
     def __init__(self, args, max_seq_length=30):
@@ -30,14 +30,12 @@ class SentenceDecoder(nn.Module):
         out, _ = self.lstm(features)
         outputs = self.linear(out[0])  # [sum(sent_lens), Nw] -- Nw = number of words in the vocabulary
         '''
-
         features = self.linear_project(recipe_enc)  # [Nb, 256]
         features = features.squeeze(0).unsqueeze(1)
         word_embs = torch.cat((features, word_embs), 1)  # torch.Size([Nb, Ns + 1, 256])
         packed = pack_padded_sequence(word_embs, sent_lens, batch_first=True, enforce_sorted=False)
-        # [0] -> [sum(sent_lens), 256]   [1] -> [sent_lens[0]]
-
-        out, _ = self.lstm(packed)  # [0] -> [sum(sent_lens), 512]   [1] -> [sent_lens[0]]
+        
+        out, _ = self.lstm(packed)
         outputs = self.linear(out[0])  # [sum(sent_lens), Nw] -- Nw = number of words in the vocabulary
 
         return outputs
@@ -72,7 +70,7 @@ class SentenceDecoder(nn.Module):
 
         return sampled_ids
 
-    def sample_greedy_decode(self,   step_enc, embed_words, decoder_hidden=None):
+    def sample_greedy_decode(self, step_enc, embed_words, decoder_hidden=None):
         '''
         :param decoder_hidden: input tensor of shape [1, B, H] for start of the decoding
         :return: decoded_batch
@@ -101,7 +99,7 @@ class SentenceDecoder(nn.Module):
 
         return decoded_batch
 
-    def sample_beam_decode(self,  step_enc, embed_words, decoder_hidden=None):
+    def sample_beam_decode(self, step_enc, embed_words, decoder_hidden=None):
         '''
         :param decoder_hidden: input tensor of shape [1, B, H] for start of the decoding
         :return: decoded_batch

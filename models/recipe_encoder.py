@@ -1,6 +1,8 @@
+import random
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pack_padded_sequence
+from torch.autograd import Variable
+from torch.nn.utils.rnn import pack_sequence, pack_padded_sequence, pad_sequence
 
 class RecipeEncoder(nn.Module):
     def __init__(self, args):
@@ -45,5 +47,5 @@ class RecipeEncoder(nn.Module):
             out = pack_padded_sequence(sampled_instructions, rec_lens, batch_first=True)
             # [0] --> [sum(rec_lens), 1024],  [1] --> [rec_lens[0]]
 
-        return out[0]  # [sum(rec_lens), 1024]
+        return out[0]
 

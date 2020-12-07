@@ -160,16 +160,15 @@ class DecoderSENTENCES(nn.Module):
         # recipe_enc --> [Nb, 1024]
         # word_embs  --> [Nb, Ns, 256]
         # len(sent_lens)  --> Nb
-
+        
         features = self.linear_project(recipe_enc)  # [Nb, 256]
         features = features.unsqueeze(1)
         word_embs = torch.cat((features, word_embs), 1)  # torch.Size([Nb, Ns + 1, 256])
         packed = pack_padded_sequence(word_embs, sent_lens, batch_first=True)
         # [0] -> [sum(sent_lens), 256]   [1] -> [sent_lens[0]]
-
+        
         out, _ = self.lstm(packed)  # [0] -> [sum(sent_lens), 512]   [1] -> [sent_lens[0]]
         outputs = self.linear(out[0])  # [sum(sent_lens), Nw] -- Nw = number of words in the vocabulary
-
         return outputs
 
     def forward_sample(self, embed_words, inputPred, hidden):

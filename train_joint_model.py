@@ -18,6 +18,7 @@ from datetime import datetime
 import socket
 import argparse
 from datasets.Vocabulary import Vocabulary
+import wandb
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -37,7 +38,7 @@ def train(args, name_repo):
     # Build the models
     encoder_recipe = RecipeEncoder(args).to(device)
     encoder_video = VideoEncoder(args.sentEnd_hiddens).to(device)
-    encoder_ingredient = IngredientEncoder(1024, 3925)
+    encoder_ingredient = IngredientEncoder(1024, 3925).to(device)
     decoder_sentences = SentenceDecoder(args).to(device)
     encoder_sentences = SentenceEncoder(args).to(device)
 
@@ -61,14 +62,24 @@ def train(args, name_repo):
     for epoch in range(args.num_epochs):
         epoch_loss_all = 0
 
-        for i, (vid_intervals, sentences_indices, sentences_emb, ingredients_v) in enumerate(train_loader):
+        for i, (vid_intervals, sentences_indices, sentences_emb, ingredients_v, name) in enumerate(train_loader):
+            print(torch.cuda.memory_allocated(0))
+            print(name)
+            # Move data to gpu
             vid_intervals = [j.float().cuda() for j in vid_intervals]
             sentences_emb = [j.float().cuda() for j in sentences_emb]
+            sentences_indices = [j.cuda() for j in sentences_indices]
+            ingredients_v = ingredients_v.float().cuda()
             # Get sizes of sentences in recipes
-            sent_lens = [sentences_emb[i].shape[1] for i in range(len(sentences_emb))]
+            sent_lens = [s.shape[1] for s in sentences_emb]
 
             # Prep word embeddings for sentences
+            #try:
             sentences_emb = [elt.squeeze(0) for elt in sentences_emb]
+            #except:
+            #    print(name)
+            #    import pdb
+            #    pdb.set_trace()
             sentences_emb = pad_sequence(sentences_emb, batch_first=True)
 
             # Get video encoder features for each sentence in recipe
@@ -79,12 +90,11 @@ def train(args, name_repo):
             rec_lens = torch.tensor([video_features.shape[1]])
 
             # Get sentence encoder features
-            #print("sentences emb shape ", sentences_emb.shape)
             sentence_features = encoder_sentences(sentences_emb, sent_lens)
-            #print("sentence features shape ", sentence_features.shape)
             sentence_features = sentence_features.unsqueeze(0)
-            #print("sentence features shape unsq ", sentence_features.shape)
-
+            if len(sentence_features.shape) == 2:
+                sentence_features = sentence_features.unsqueeze(0)
+            
             # Get ingredient features using ingredient encoder
             ingredient_feats = encoder_ingredient(ingredients_v).unsqueeze(0)
             ingredient_feats = ingredient_feats.cuda()
@@ -97,7 +107,7 @@ def train(args, name_repo):
             
             # Get sentence decoder output
             sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_emb)
-            
+            print("sentence dec ", sentence_dec.shape)
             # Construct ground truth from sentences
             sentences_indices = [elt.squeeze(0) for elt in sentences_indices]
             sentences_indices = pad_sequence(sentences_indices, batch_first=True)
@@ -106,29 +116,33 @@ def train(args, name_repo):
             sentence_target = sentence_target.cuda()
 
             # Calculate losses
-            all_loss = criterion_sent(sentence_dec, sentence_target)
+            sentence_loss = criterion_sent(sentence_dec, sentence_target)
             # When y = 1 this tells Cosine loss that embeddings should be similar
             y = torch.Tensor([1]).cuda()
             embedding_loss = criterion_latent(video_features, sentence_features, y)
-            epoch_loss_all += all_loss + embedding_loss
-
+            total_loss = sentence_loss + embedding_loss
+            
             encoder_video.zero_grad()
             encoder_sentences.zero_grad()
             encoder_recipe.zero_grad()
             decoder_sentences.zero_grad()
             
-            all_loss.backward()
+            total_loss.backward()
             optimizer.step()
+            if i % args.log_step == 0:  # Print log info
+                print('Epoch [{}/{}], Step [{}/{}], Decoder Loss: {:.10f}, Embedding Loss: {:.10f}'.format(epoch, args.num_epochs, i, total_step,
+                                                                           sentence_loss.item(), embedding_loss.item()))
+            #wandb.log({"Decoder Loss ": sentence_loss.item(), "Embedding Loss": embedding_loss.item()})
+            epoch_loss_all += total_loss
 
             # Free memory before next loop
             vid_intervals, sentences_emb, sentences_indices, ingredients_v, \
             ingredient_feats, video_features, sentence_features, recipe_enc,  \
             sentence_dec, sentence_target = [], [], [], [], [], [], [], [], [], []
+            del sentence_loss, embedding_loss, sentence_dec, recipe_enc, video_features, ingredient_feats
 
-            if i % args.log_step == 0:  # Print log info
-                print('Epoch [{}/{}], Step [{}/{}], Loss: {:.10f} '.format(epoch, args.num_epochs, i, total_step,
-                                                                           all_loss.item()))
-        if (epoch + 1) % 5 == 0:  # Save the model checkpoints
+            
+        if (epoch + 1) % 50 == 0:  # Save the model checkpoints
             save_models(args, (encoder_recipe, encoder_ingredient, encoder_sentences, decoder_sentences, encoder_video),
                         epoch + 1)
         
@@ -184,9 +198,10 @@ def ids2words(vocab, target_ids):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    name_repo = 'retrain_video_enc'
+    name_repo = 'train_joint_model'
+    #wandb.init(project="cse538-project")
 
-    intermediate_fd = '/home/cristinam/cse538/project/saved_models/'+name_repo+'/'
+    intermediate_fd = '/home/cristinam/cse538/project/NLPFinalProject/saved_models/'+name_repo+'/'
 
     # model parameters
     parser.add_argument('--vocab_len', type=int, default=12269, help='')
@@ -207,7 +222,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_step', type=int, default=45, help='step size for saving trained models')
     parser.add_argument('--num_epochs', type=int, default=50)
     parser.add_argument('--batch_size', type=int, default=50)
-    parser.add_argument('--num_workers', type=int, default=2)
+    parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--learning_rate', type=float, default=0.001)
 
     args = parser.parse_args()
