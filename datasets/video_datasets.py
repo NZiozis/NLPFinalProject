@@ -62,11 +62,11 @@ class TastyVideoDataset(data.Dataset):
             recipe_dicts = json.load(recipeFile)
 
         # These recipes are too large for the video encoder
-        leave_out = ['tasty-101-cinnamon-rolls']
+        leave_out = ['tasty-101-cinnamon-rolls', 'the-ultimate-dinner-rolls', 'the-ultimate-thanksgiving-turkey-hack']
 
         if video:
             for name, recipe_dict in recipe_dicts.items():
-                if recipe_dict["split"] == self.split and name[0] in ["s", "t", "u", "v", "w", "x", "y", "z"] and name not in leave_out:
+                if recipe_dict["split"] == self.split and name not in leave_out:
                     frames, steps = [], []
                     count = 0
                     max_num_frames = len(os.listdir(os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames')))

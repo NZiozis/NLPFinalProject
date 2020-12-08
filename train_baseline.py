@@ -141,30 +141,6 @@ def save_models(args, all_models, epoch_val):
                os.path.join(args.model_path, 'encoder_sentences{}.ckpt'.format(num_epochs)))
 
 
-def generate(sentences_v, vocab, recipe_enc, decoder_sentences, embed_words):
-    target_sentence = ids2words(vocab, sentences_v.cpu().numpy())
-
-    recipe_enc_gen = recipe_enc[0, :].view(1, -1)
-    pred_ids = decoder_sentences.sample(recipe_enc_gen, embed_words)
-    pred_sentence = ids2words(vocab, pred_ids[0].cpu().numpy())
-
-    print('gt   : ', target_sentence)
-    print('pred : ', pred_sentence)
-
-
-def ids2words(vocab, target_ids):
-    target_caption = []
-    for word_id in target_ids:
-        word = vocab.idx2word[word_id]
-        if word == '<start>':
-            continue
-        if word == '<end>':
-            break
-        target_caption.append(word)
-    target_sentence = ' '.join(target_caption)
-    return target_sentence
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     name_repo = 'train_baseline'

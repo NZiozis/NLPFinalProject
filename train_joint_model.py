@@ -55,7 +55,7 @@ def train(args, name_repo):
     tasty_video_dataset = TastyVideoDataset(split='train', video=True)
     train_loader = torch.utils.data.DataLoader(dataset=tasty_video_dataset,
                                               batch_size=1,
-                                              shuffle=False)
+                                              shuffle=True)
     # Train the models
     use_teacherF = False
     total_step = len(train_loader)
@@ -130,7 +130,7 @@ def train(args, name_repo):
             if i % args.log_step == 0:  # Print log info
                 print('Epoch [{}/{}], Step [{}/{}], Decoder Loss: {:.10f}, Embedding Loss: {:.10f}'.format(epoch, args.num_epochs, i, total_step,
                                                                            sentence_loss.item(), embedding_loss.item()))
-            #wandb.log({"Decoder Loss ": sentence_loss.item(), "Embedding Loss": embedding_loss.item()})
+            wandb.log({"Decoder Loss ": sentence_loss.item(), "Embedding Loss": embedding_loss.item()})
 
             # Free memory before next loop
             vid_intervals, sentences_emb, sentences_indices, ingredients_v, \
@@ -180,34 +180,11 @@ def save_models(args, all_models, epoch_val):
                os.path.join(args.model_path, 'encoder_sentences{}.ckpt'.format(num_epochs)))
 
 
-def generate(sentences_v, vocab, recipe_enc, decoder_sentences, embed_words):
-    target_sentence = ids2words(vocab, sentences_v.cpu().numpy())
-
-    recipe_enc_gen = recipe_enc[0, :].view(1, -1)
-    pred_ids = decoder_sentences.sample(recipe_enc_gen, embed_words)
-    pred_sentence = ids2words(vocab, pred_ids[0].cpu().numpy())
-
-    print('gt   : ', target_sentence)
-    print('pred : ', pred_sentence)
-
-
-def ids2words(vocab, target_ids):
-    target_caption = []
-    for word_id in target_ids:
-        word = vocab.idx2word[word_id]
-        if word == '<start>':
-            continue
-        if word == '<end>':
-            break
-        target_caption.append(word)
-    target_sentence = ' '.join(target_caption)
-    return target_sentence
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     name_repo = 'train_joint_model'
-    #wandb.init(project="cse538-project")
+    wandb.init(project="cse538-project")
 
     intermediate_fd = '/home/cristinam/cse538/project/NLPFinalProject/saved_models/'+name_repo+'/'
 
