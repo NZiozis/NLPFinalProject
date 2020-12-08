@@ -62,7 +62,7 @@ def train(args, name_repo):
     for epoch in range(args.num_epochs):
 
         for i, (vid_intervals, sentences_indices, sentences_emb, ingredients_v, name) in enumerate(train_loader):
-            print(torch.cuda.memory_allocated(0))
+            #print(torch.cuda.memory_allocated(0))
             print(name)
             # Move data to gpu
             vid_intervals = [j.float().cuda() for j in vid_intervals]
@@ -150,7 +150,7 @@ def train(args, name_repo):
             #print('cached memory: {}'.format(torch.cuda.memory_cached() / 1024 ** 2))
 
             
-        if (epoch + 1) % 5 == 0:  # Save the model checkpoints
+        if (epoch + 1) % 1 == 0:  # Save the model checkpoints
             save_models(args, (encoder_recipe, encoder_ingredient, encoder_sentences, decoder_sentences, encoder_video),
                         epoch + 1)
         

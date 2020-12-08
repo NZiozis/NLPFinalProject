@@ -61,12 +61,12 @@ class TastyVideoDataset(data.Dataset):
         with open('data/Tasty_Videos_Dataset/all_recipes_processed.txt', 'r') as recipeFile:
             recipe_dicts = json.load(recipeFile)
 
+        # These recipes are too large for the video encoder
+        leave_out = ['tasty-101-cinnamon-rolls']
+
         if video:
-            #name = 'yellow-squash-lasagna'
-            #name = 'stuffed-hash-brown-omelette'
-            #recipe_dict = recipe_dicts[name]
             for name, recipe_dict in recipe_dicts.items():
-                if recipe_dict["split"] == self.split and name[0] == "a":
+                if recipe_dict["split"] == self.split and name[0] in ["s", "t", "u", "v", "w", "x", "y", "z"] and name not in leave_out:
                     frames, steps = [], []
                     count = 0
                     max_num_frames = len(os.listdir(os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames')))
@@ -84,20 +84,21 @@ class TastyVideoDataset(data.Dataset):
                                 # Get corresponding step text
                                 steps.append(recipe_dict["steps"][count])
                         count+=1
-                        
+
                     # Remove duplicate ingredients
                     ingredients = list(set(recipe_dict["ingredients"]))
 
-                    # Add recipe sample to dataset:
-                    # frames is a list of lists. Each nonempty list contains file paths to frames corresponding to a recipe step.
-                    # steps is a list of strings, one string for each recipe step.
-                    # ingredients is a list of strings, one for each ingredient in the recipe.
-                    self.files[split].append({
-                        "frames": frames,
-                        "sentences": steps,
-                        "ingredients": ingredients,
-                        "recipe_name": name
-                    })
+                    if len(frames) > 0 and len(steps) > 0:
+                        # Add recipe sample to dataset:
+                        # frames is a list of lists. Each nonempty list contains file paths to frames corresponding to a recipe step.
+                        # steps is a list of strings, one string for each recipe step.
+                        # ingredients is a list of strings, one for each ingredient in the recipe.
+                        self.files[split].append({
+                            "frames": frames,
+                            "sentences": steps,
+                            "ingredients": ingredients,
+                            "recipe_name": name
+                        })
         else:
             for name, recipe_dict in recipe_dicts.items():
                 if recipe_dict["split"] == self.split:
