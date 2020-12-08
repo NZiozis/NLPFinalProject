@@ -74,12 +74,7 @@ def train(args, name_repo):
             sent_lens = [s.shape[1] for s in sentences_emb]
 
             # Prep word embeddings for sentences
-            #try:
             sentences_emb = [elt.squeeze(0) for elt in sentences_emb]
-            #except:
-            #    print(name)
-            #    import pdb
-            #    pdb.set_trace()
             sentences_emb = pad_sequence(sentences_emb, batch_first=True)
 
             # Get video encoder features for each sentence in recipe
@@ -107,11 +102,10 @@ def train(args, name_repo):
             
             # Get sentence decoder output
             sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_emb)
-            print("sentence dec ", sentence_dec.shape)
+
             # Construct ground truth from sentences
             sentences_indices = [elt.squeeze(0) for elt in sentences_indices]
-            sentences_indices = pad_sequence(sentences_indices, batch_first=True)
-            sentence_target = pack_padded_sequence(sentences_indices, sent_lens, batch_first=True, enforce_sorted=False)[0]
+            sentence_target = torch.cat(sentences_indices, dim=0)
             sentence_target = sentence_target.type(torch.LongTensor)
             sentence_target = sentence_target.cuda()
 

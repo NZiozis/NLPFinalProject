@@ -53,8 +53,7 @@ if __name__ == "__main__":
         steps_vocab_dict = json.load(stepsDictFile)
     idx2word = dict()
     for k,v in steps_vocab_dict.items():
-        #print("v ", v, " k ", k)
-        idx2word[int(v)] = k #codecs.decode(k)
+        idx2word[int(v)] = k
     f = open("index_to_vocab.json", "w")
     jsonDict = json.dumps(idx2word)
     f.write(jsonDict)

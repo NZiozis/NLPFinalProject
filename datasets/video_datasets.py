@@ -12,7 +12,7 @@ import codecs
 class TastyVideoDataset(data.Dataset):
     """ Implements Pytorch dataset for training baseline and joint models on the Tasty Video Dataset
     """
-    def __init__(self, root='/nfs/vision/cristinam/Tasty_Videos_Dataset', split="train", embedding_type='fasttext', img_transform=None):
+    def __init__(self, root='/nfs/bigretina/add_disk0/cristinam/Tasty_Videos_Dataset', split="train", embedding_type='fasttext', img_transform=None, video=True):
         '''
         @param root (str): Path to root directory for Tasty Video Dataset
         @param split (str): Can be 'train', 'val' or 'test'
@@ -26,6 +26,8 @@ class TastyVideoDataset(data.Dataset):
         self.img_transform = img_transform
         # Define the spatial resolution of the images
         self.crop_size = 128
+        # Whether or not to return image frames from video
+        self.video = video
 
         # Load word embeddings file
         if embedding_type == 'fasttext':
@@ -59,42 +61,59 @@ class TastyVideoDataset(data.Dataset):
         with open('data/Tasty_Videos_Dataset/all_recipes_processed.txt', 'r') as recipeFile:
             recipe_dicts = json.load(recipeFile)
 
-        name = 'yellow-squash-lasagna'
-        #name = 'stuffed-hash-brown-omelette'
-        recipe_dict = recipe_dicts[name]
-        #for name, recipe_dict in recipe_dicts.items():
-        #if recipe_dict["split"] == self.split:
-        frames, steps = [], []
-        count = 0
-        max_num_frames = len(os.listdir(os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames')))
-        for elt in recipe_dict["annotations"]:
-            # Check if interval exists
-            if len(elt) == 2:
-                start, end = elt[0], elt[1]
-                # If end interval is larger than max number of frames in folder, set it to max
-                if max_num_frames < end:
-                    end = max_num_frames-1
-                # Get video frames spaced every 10 frames in range
-                frames_list = [os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 10)]
-                if len(frames_list) > 0:
-                    frames.append(frames_list)
-                    # Get corresponding step text
-                    steps.append(recipe_dict["steps"][count])
-            count+=1
+        if video:
+            name = 'yellow-squash-lasagna'
+            #name = 'stuffed-hash-brown-omelette'
+            recipe_dict = recipe_dicts[name]
+            #for name, recipe_dict in recipe_dicts.items():
+            #if recipe_dict["split"] == self.split:
+            frames, steps = [], []
+            count = 0
+            max_num_frames = len(os.listdir(os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames')))
+            for elt in recipe_dict["annotations"]:
+                # Check if interval exists
+                if len(elt) == 2:
+                    start, end = elt[0], elt[1]
+                    # If end interval is larger than max number of frames in folder, set it to max
+                    if max_num_frames < end:
+                        end = max_num_frames-1
+                    # Get video frames spaced every 10 frames in range
+                    frames_list = [os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 10)]
+                    if len(frames_list) > 0:
+                        frames.append(frames_list)
+                        # Get corresponding step text
+                        steps.append(recipe_dict["steps"][count])
+                count+=1
+            # Remove duplicate ingredients
+            ingredients = list(set(recipe_dict["ingredients"]))
 
-        # Remove duplicate ingredients
-        ingredients = list(set(recipe_dict["ingredients"]))
+            # Add recipe sample to dataset:
+            # frames is a list of lists. Each nonempty list contains file paths to frames corresponding to a recipe step.
+            # steps is a list of strings, one string for each recipe step.
+            # ingredients is a list of strings, one for each ingredient in the recipe.
+            self.files[split].append({
+                "frames": frames,
+                "sentences": steps,
+                "ingredients": ingredients,
+                "recipe_name": name
+            })
+        else:
+            for name, recipe_dict in recipe_dicts.items():
+                if recipe_dict["split"] == self.split:
+                    steps = recipe_dict["steps"]
+                    # Remove duplicate ingredients
+                    ingredients = list(set(recipe_dict["ingredients"]))
 
-        # Add recipe sample to dataset:
-        # frames is a list of lists. Each nonempty list contains file paths to frames corresponding to a recipe step.
-        # steps is a list of strings, one string for each recipe step.
-        # ingredients is a list of strings, one for each ingredient in the recipe.
-        self.files[split].append({
-            "frames": frames,
-            "sentences": steps,
-            "ingredients": ingredients,
-            "recipe_name": name
-        })
+                    # Add recipe sample to dataset:
+                    # frames is a list of lists. Each nonempty list contains file paths to frames corresponding to a recipe step.
+                    # steps is a list of strings, one string for each recipe step.
+                    # ingredients is a list of strings, one for each ingredient in the recipe.
+                    self.files[split].append({
+                        "frames": [],
+                        "sentences": steps,
+                        "ingredients": ingredients,
+                        "recipe_name": name
+                    })
 
 
     def __len__(self):
@@ -117,20 +136,23 @@ class TastyVideoDataset(data.Dataset):
         If ingredients has a 1 at index N then the ingredient corresponding to index N is in the recipe.
         '''
         datafiles = self.files[self.split][index]
-        frames = []
-        for interval in datafiles["frames"]:
-            interval_frames = []
-            for f in interval:
-                img = Image.open(f).convert('RGB')
-                img = img.resize((self.crop_size, self.crop_size))
-                np3ch = np.array(img)
-                # If image is grayscale, convert to "color" by replicating channels
-                if np3ch.shape != (self.crop_size, self.crop_size, 3):
-                    np3ch = np3ch.repeat(3,1,1)
-                # Permute dimensions to make channel first
-                np3ch = np.moveaxis(np3ch, -1, 0)
-                interval_frames.append(np3ch)
-            frames.append(np.array(interval_frames))
+        if self.video:
+            frames = []
+            for interval in datafiles["frames"]:
+                interval_frames = []
+                for f in interval:
+                    img = Image.open(f).convert('RGB')
+                    img = img.resize((self.crop_size, self.crop_size))
+                    np3ch = np.array(img)
+                    # If image is grayscale, convert to "color" by replicating channels
+                    if np3ch.shape != (self.crop_size, self.crop_size, 3):
+                        np3ch = np3ch.repeat(3,1,1)
+                    # Permute dimensions to make channel first
+                    np3ch = np.moveaxis(np3ch, -1, 0)
+                    interval_frames.append(np3ch)
+                frames.append(np.array(interval_frames))
+        else:
+            frames = []
 
         # Ingredient vector has 1's at index of each ingredient
         ingredient_words = datafiles["ingredients"]
@@ -150,7 +172,8 @@ class TastyVideoDataset(data.Dataset):
         steps_embeds, steps_indices = [], []
         for step in steps_words:
             split_step = step.split(' ')
-            embeds = [self.embed_dict[i] for i in split_step]
+            embeds = [self.embed_dict.get(i, [0] * 100) for i in split_step]
+            #embeds = [self.embed_dict[i] for i in split_step]
             steps_embeds.append(torch.FloatTensor(embeds))
             # Also get index of words from step
             indices = [self.steps_vocab_dict[i] for i in split_step]

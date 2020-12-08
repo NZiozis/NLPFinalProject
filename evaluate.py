@@ -17,6 +17,7 @@ from models.sentence_decoder import SentenceDecoder
 from models.recipe_encoder import RecipeEncoder
 
 import wandb
+from rouge import FilesRouge
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -31,7 +32,6 @@ def decode_sentence(sentence, index2vocab):
 
 
 def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_dict):
-    
     # Build the models
     encoder_recipe = RecipeEncoder(args)
     encoder_recipe_state_dict = torch.load(os.path.join(saved_model_folder, 'encoder_recipe-{}.ckpt'.format(epochs)), map_location=torch.device('cpu'))
@@ -85,8 +85,6 @@ def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_d
 
     outputs, gt = [], []
     for i, (vid_intervals, sentences_indices, sentences_emb, ingredients_v, name) in enumerate(test_loader):
-        print(torch.cuda.memory_allocated(0))
-        print(name)
         # Move data to gpu
         vid_intervals = [j.float().cuda() for j in vid_intervals]
         sentences_emb = [j.float().cuda() for j in sentences_emb]
@@ -161,5 +159,13 @@ if __name__ == '__main__':
     with open('data/index_to_vocab.json', 'r') as vocabFile:
         index_to_vocab = json.load(vocabFile)
 
+    # Generate results files with one recipe per line
     generate(args, saved_model_folder, epochs, split, results_path, index_to_vocab)
+
+    # Calculate rouge score
+    files_rouge = FilesRouge()
+    outputs_path = os.path.join(results_path, 'outputs_{}.txt'.format(split))
+    ref_path = os.path.join(results_path, 'gt_{}.txt'.format(split))
+    scores = files_rouge.get_scores(outputs_path, ref_path, avg=True)
+    print("ROUGE scores ", scores)
 

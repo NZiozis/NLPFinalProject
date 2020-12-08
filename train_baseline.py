@@ -17,7 +17,7 @@ import numpy as np
 from datetime import datetime
 import socket
 import argparse
-from datasets.Vocabulary import Vocabulary
+from datasets.video_datasets import TastyVideoDataset
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -50,7 +50,10 @@ def train(args, name_repo):
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
     # Build data loader
-    train_loader = get_loader(args, args.batch_size, None, shuffle=True, num_workers=args.num_workers, use_video=True)
+    tasty_video_dataset = TastyVideoDataset(split='train', video=False)
+    train_loader = torch.utils.data.DataLoader(dataset=tasty_video_dataset,
+                                              batch_size=1,
+                                              shuffle=True)
 
     # Train the models
     use_teacherF = False
@@ -58,10 +61,13 @@ def train(args, name_repo):
     for epoch in range(args.num_epochs):
         epoch_loss_all = 0
 
-        for i, (vid_intervals, sentences_indices, sentences_emb, ingredients_v) in enumerate(train_loader):
+        for i, (_, sentences_indices, sentences_emb, ingredients_v, recipe_name) in enumerate(train_loader):
+
             sentences_emb = [j.float().cuda() for j in sentences_emb]
             # Get sizes of sentences in recipes
             sent_lens = [sentences_emb[i].shape[1] for i in range(len(sentences_emb))]
+            # Get lengths of recipes
+            rec_lens = torch.tensor([len(sentences_emb)])
 
             # Prep word embeddings for sentences
             sentences_emb = [elt.squeeze(0) for elt in sentences_emb]
@@ -102,14 +108,11 @@ def train(args, name_repo):
             all_loss.backward()
             optimizer.step()
 
-            # Free memory before next loop
-            vid_intervals, sentences_emb, sentences_indices, ingredients_v, \
-            ingredient_feats, sentence_features, recipe_enc,  \
-            sentence_dec, sentence_target = [], [], [], [], [], [], [], [], []
-
             if i % args.log_step == 0:  # Print log info
                 print('Epoch [{}/{}], Step [{}/{}], Loss: {:.10f} '.format(epoch, args.num_epochs, i, total_step,
                                                                            all_loss.item()))
+            del all_loss
+
         if (epoch + 1) % 5 == 0:  # Save the model checkpoints
             save_models(args, (encoder_recipe, encoder_ingredient, encoder_sentences, decoder_sentences),
                         epoch + 1)
@@ -164,7 +167,7 @@ def ids2words(vocab, target_ids):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    name_repo = 'retrain_video_enc'
+    name_repo = 'train_baseline'
 
     intermediate_fd = '/home/cristinam/cse538/project/saved_models/'+name_repo+'/'
 
