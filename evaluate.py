@@ -31,7 +31,7 @@ def decode_sentence(sentence, index2vocab):
     return " ".join(words)
 
 
-def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_dict):
+def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_dict, use_video):
     # Build the models
     encoder_recipe = RecipeEncoder(args)
     encoder_recipe_state_dict = torch.load(os.path.join(saved_model_folder, 'encoder_recipe-{}.ckpt'.format(epochs)), map_location=torch.device('cpu'))
@@ -41,13 +41,14 @@ def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_d
         encoder_recipe.cuda()
         encoder_recipe = nn.DataParallel(encoder_recipe)
 
-    encoder_video = VideoEncoder(args.sentEnd_hiddens)
-    encoder_video_state_dict = torch.load(os.path.join(saved_model_folder, 'encoder_video-{}.ckpt'.format(epochs)), map_location=torch.device('cpu'))
-    encoder_video.load_state_dict(encoder_video_state_dict)
-    encoder_video.eval()
-    if device != 'cpu':
-        encoder_video.cuda()
-        encoder_video = nn.DataParallel(encoder_video)
+    if use_video:
+        encoder_video = VideoEncoder(args.sentEnd_hiddens)
+        encoder_video_state_dict = torch.load(os.path.join(saved_model_folder, 'encoder_video-{}.ckpt'.format(epochs)), map_location=torch.device('cpu'))
+        encoder_video.load_state_dict(encoder_video_state_dict)
+        encoder_video.eval()
+        if device != 'cpu':
+            encoder_video.cuda()
+            encoder_video = nn.DataParallel(encoder_video)
 
     encoder_ingredient = IngredientEncoder(1024, 3925)
     encoder_ingredient_state_dict = torch.load(os.path.join(saved_model_folder, 'encoder_ingredient-{}.ckpt'.format(epochs)), map_location=torch.device('cpu'))
@@ -74,7 +75,7 @@ def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_d
         encoder_sentences = nn.DataParallel(encoder_sentences)
 
     # Build data loader
-    tasty_video_dataset = TastyVideoDataset(split=split)
+    tasty_video_dataset = TastyVideoDataset(split=split, video=use_video)
     test_loader = torch.utils.data.DataLoader(dataset=tasty_video_dataset,
                                               batch_size=1,
                                               shuffle=False)
@@ -84,45 +85,84 @@ def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_d
     print("Total number of samples in ", split, number_samples)
 
     outputs, gt = [], []
-    for i, (vid_intervals, sentences_indices, sentences_emb, ingredients_v, name) in enumerate(test_loader):
-        # Move data to gpu
-        vid_intervals = [j.float().cuda() for j in vid_intervals]
-        sentences_emb = [j.float().cuda() for j in sentences_emb]
-        sentences_indices = [j.cuda() for j in sentences_indices]
-        ingredients_v = ingredients_v.float().cuda()
-        # Get sizes of sentences in recipes
-        sent_lens = [s.shape[1] for s in sentences_emb]
+    if use_video:
+        for i, (vid_intervals, sentences_indices, sentences_emb, ingredients_v, name) in enumerate(test_loader):
+            # Move data to gpu
+            vid_intervals = [j.float().cuda() for j in vid_intervals]
+            sentences_emb = [j.float().cuda() for j in sentences_emb]
+            sentences_indices = [j.cuda() for j in sentences_indices]
+            ingredients_v = ingredients_v.float().cuda()
+            # Get sizes of sentences in recipes
+            sent_lens = [s.shape[1] for s in sentences_emb]
 
-        # Prep word embeddings for sentences
-        sentences_emb = [elt.squeeze(0) for elt in sentences_emb]
-        sentences_emb = pad_sequence(sentences_emb, batch_first=True)
+            # Prep word embeddings for sentences
+            sentences_emb = [elt.squeeze(0) for elt in sentences_emb]
+            sentences_emb = pad_sequence(sentences_emb, batch_first=True)
 
-        # Get video encoder features for each sentence in recipe
-        video_features = [encoder_video(j) for j in vid_intervals]
-        video_features = torch.stack(video_features)
-        video_features = video_features.permute(1, 0, 2) # (batch_size, num_sentences, hidden_dim)
-        # Get lengths of recipes
-        rec_lens = torch.tensor([video_features.shape[1]])
-        
-        # Get ingredient features using ingredient encoder
-        ingredient_feats = encoder_ingredient(ingredients_v).unsqueeze(0)
-        ingredient_feats = ingredient_feats.cuda()
+            # Get video encoder features for each sentence in recipe
+            video_features = [encoder_video(j) for j in vid_intervals]
+            video_features = torch.stack(video_features)
+            video_features = video_features.permute(1, 0, 2) # (batch_size, num_sentences, hidden_dim)
+            # Get lengths of recipes
+            rec_lens = torch.tensor([video_features.shape[1]])
+            
+            # Get ingredient features using ingredient encoder
+            ingredient_feats = encoder_ingredient(ingredients_v).unsqueeze(0)
+            ingredient_feats = ingredient_feats.cuda()
 
-        # Get recipe encoder output using features from video encoder
-        recipe_enc = encoder_recipe(ingredient_feats, video_features, rec_lens, False)
-        recipe_enc = recipe_enc.unsqueeze(0)
-        
-        # Get sentence decoder output
-        sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_emb)
-        # TODO: Use beam search instead of greedy approach
-        _, predicted = sentence_dec.max(1)
-        
-        # Construct ground truth from sentences
-        sentences_indices = [elt.squeeze(0) for elt in sentences_indices]
-        sentences_indices = torch.cat(sentences_indices, dim=0)
+            # Get recipe encoder output using features from video encoder
+            recipe_enc = encoder_recipe(ingredient_feats, video_features, rec_lens, False)
+            recipe_enc = recipe_enc.unsqueeze(0)
+            
+            # Get sentence decoder output
+            sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_emb)
+            # TODO: Use beam search instead of greedy approach
+            _, predicted = sentence_dec.max(1)
+            
+            # Construct ground truth from sentences
+            sentences_indices = [elt.squeeze(0) for elt in sentences_indices]
+            sentences_indices = torch.cat(sentences_indices, dim=0)
 
-        outputs.append(decode_sentence(predicted, indx2vocab_dict))
-        gt.append(decode_sentence(sentences_indices, indx2vocab_dict))
+            outputs.append(decode_sentence(predicted, indx2vocab_dict))
+            gt.append(decode_sentence(sentences_indices, indx2vocab_dict))
+    else:
+        for i, (_, sentences_indices, sentences_emb, ingredients_v, name) in enumerate(test_loader):
+            # Move data to gpu
+            sentences_emb = [j.float().cuda() for j in sentences_emb]
+            sentences_indices = [j.cuda() for j in sentences_indices]
+            ingredients_v = ingredients_v.float().cuda()
+            # Get sizes of sentences in recipes
+            sent_lens = [s.shape[1] for s in sentences_emb]
+            # Get lengths of recipes
+            rec_lens = torch.tensor([len(sentences_emb)])
+
+            # Prep word embeddings for sentences
+            sentences_emb = [elt.squeeze(0) for elt in sentences_emb]
+            sentences_emb = pad_sequence(sentences_emb, batch_first=True)
+
+            # Get sentence encoder features
+            sentence_features = encoder_sentences(sentences_emb, sent_lens)
+            sentence_features = sentence_features.unsqueeze(0)
+            
+            # Get ingredient features using ingredient encoder
+            ingredient_feats = encoder_ingredient(ingredients_v).unsqueeze(0)
+            ingredient_feats = ingredient_feats.cuda()
+
+            # Get recipe encoder output using features from video encoder
+            recipe_enc = encoder_recipe(ingredient_feats, sentence_features, rec_lens, False)
+            recipe_enc = recipe_enc.unsqueeze(0)
+            
+            # Get sentence decoder output
+            sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_emb)
+            # TODO: Use beam search instead of greedy approach
+            _, predicted = sentence_dec.max(1)
+            
+            # Construct ground truth from sentences
+            sentences_indices = [elt.squeeze(0) for elt in sentences_indices]
+            sentences_indices = torch.cat(sentences_indices, dim=0)
+
+            outputs.append(decode_sentence(predicted, indx2vocab_dict))
+            gt.append(decode_sentence(sentences_indices, indx2vocab_dict))
 
     # Write outputs and ground truth to txt files with one sentence per line
     with open(os.path.join(results_path, 'outputs_{}.txt'.format(split)), 'w') as outputFile:
@@ -138,6 +178,7 @@ if __name__ == '__main__':
     epochs = 50
     split = 'val'
     results_path = os.path.join(saved_model_folder, 'results')
+    video=True
 
     # model parameters
     parser.add_argument('--vocab_len', type=int, default=12269, help='')
@@ -160,7 +201,7 @@ if __name__ == '__main__':
         index_to_vocab = json.load(vocabFile)
 
     # Generate results files with one recipe per line
-    generate(args, saved_model_folder, epochs, split, results_path, index_to_vocab)
+    generate(args, saved_model_folder, epochs, split, results_path, index_to_vocab, video)
 
     # Calculate rouge score
     files_rouge = FilesRouge()
