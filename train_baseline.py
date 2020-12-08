@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
+import os
+import random
+import numpy as np
+import socket
+import argparse
+from datetime import datetime
+import wandb
+
 import torch
 import torch.nn as nn
-import os
-from datasets.data_loader import get_loader
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
+
 from models.sentence_encoder import SentenceEncoder
 from models.video_encoder import VideoEncoder
 from models.ingredient_encoder import IngredientEncoder
 from models.sentence_decoder import SentenceDecoder
 from models.recipe_encoder import RecipeEncoder
-from torch.nn.utils.rnn import pack_sequence, pad_sequence
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-import pickle
-from torch.autograd import Variable
-import random
-import numpy as np
-from datetime import datetime
-import socket
-import argparse
 from datasets.video_datasets import TastyVideoDataset
 
 # Device configuration
@@ -59,7 +58,6 @@ def train(args, name_repo):
     use_teacherF = False
     total_step = len(train_loader)
     for epoch in range(args.num_epochs):
-        epoch_loss_all = 0
 
         for i, (_, sentences_indices, sentences_emb, ingredients_v, recipe_name) in enumerate(train_loader):
 
@@ -99,7 +97,6 @@ def train(args, name_repo):
 
             # Calculate losses
             all_loss = criterion_sent(sentence_dec, sentence_target)
-            epoch_loss_all += all_loss
 
             encoder_sentences.zero_grad()
             encoder_recipe.zero_grad()
@@ -108,9 +105,12 @@ def train(args, name_repo):
             all_loss.backward()
             optimizer.step()
 
-            if i % args.log_step == 0:  # Print log info
+            # Print log info
+            if i % args.log_step == 0:
                 print('Epoch [{}/{}], Step [{}/{}], Loss: {:.10f} '.format(epoch, args.num_epochs, i, total_step,
                                                                            all_loss.item()))
+            wandb.log({"Decoder Loss ": all_loss.item()})
+
             del all_loss
 
         if (epoch + 1) % 5 == 0:  # Save the model checkpoints
@@ -118,7 +118,7 @@ def train(args, name_repo):
                         epoch + 1)
         
     # Save the final models
-    save_models(args, (encoder_recipe, encoder_ingredient, encoder_sentences, decoder_sentences, encoder_video),
+    save_models(args, (encoder_recipe, encoder_ingredient, encoder_sentences, decoder_sentences),
                 epoch + 1)
 
 
@@ -168,8 +168,9 @@ def ids2words(vocab, target_ids):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     name_repo = 'train_baseline'
+    wandb.init(project="cse538-project")
 
-    intermediate_fd = '/home/cristinam/cse538/project/saved_models/'+name_repo+'/'
+    intermediate_fd = '/home/cristinam/cse538/project/NLPFinalProject/saved_models/'+name_repo+'/'
 
     # model parameters
     parser.add_argument('--vocab_len', type=int, default=12269, help='')

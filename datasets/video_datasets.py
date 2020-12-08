@@ -62,41 +62,42 @@ class TastyVideoDataset(data.Dataset):
             recipe_dicts = json.load(recipeFile)
 
         if video:
-            name = 'yellow-squash-lasagna'
+            #name = 'yellow-squash-lasagna'
             #name = 'stuffed-hash-brown-omelette'
-            recipe_dict = recipe_dicts[name]
-            #for name, recipe_dict in recipe_dicts.items():
-            #if recipe_dict["split"] == self.split:
-            frames, steps = [], []
-            count = 0
-            max_num_frames = len(os.listdir(os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames')))
-            for elt in recipe_dict["annotations"]:
-                # Check if interval exists
-                if len(elt) == 2:
-                    start, end = elt[0], elt[1]
-                    # If end interval is larger than max number of frames in folder, set it to max
-                    if max_num_frames < end:
-                        end = max_num_frames-1
-                    # Get video frames spaced every 10 frames in range
-                    frames_list = [os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 10)]
-                    if len(frames_list) > 0:
-                        frames.append(frames_list)
-                        # Get corresponding step text
-                        steps.append(recipe_dict["steps"][count])
-                count+=1
-            # Remove duplicate ingredients
-            ingredients = list(set(recipe_dict["ingredients"]))
+            #recipe_dict = recipe_dicts[name]
+            for name, recipe_dict in recipe_dicts.items():
+                if recipe_dict["split"] == self.split and name[0] == "a":
+                    frames, steps = [], []
+                    count = 0
+                    max_num_frames = len(os.listdir(os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames')))
+                    for elt in recipe_dict["annotations"]:
+                        # Check if interval exists
+                        if len(elt) == 2:
+                            start, end = elt[0], elt[1]
+                            # If end interval is larger than max number of frames in folder, set it to max
+                            if max_num_frames < end:
+                                end = max_num_frames-1
+                            # Get video frames spaced every 10 frames in range
+                            frames_list = [os.path.join(self.root, 'ALL_RECIPES_without_videos', name, 'frames', (str(i)+'.jpg').zfill(9)) for i in range(start, end+1, 10)]
+                            if len(frames_list) > 0:
+                                frames.append(frames_list)
+                                # Get corresponding step text
+                                steps.append(recipe_dict["steps"][count])
+                        count+=1
+                        
+                    # Remove duplicate ingredients
+                    ingredients = list(set(recipe_dict["ingredients"]))
 
-            # Add recipe sample to dataset:
-            # frames is a list of lists. Each nonempty list contains file paths to frames corresponding to a recipe step.
-            # steps is a list of strings, one string for each recipe step.
-            # ingredients is a list of strings, one for each ingredient in the recipe.
-            self.files[split].append({
-                "frames": frames,
-                "sentences": steps,
-                "ingredients": ingredients,
-                "recipe_name": name
-            })
+                    # Add recipe sample to dataset:
+                    # frames is a list of lists. Each nonempty list contains file paths to frames corresponding to a recipe step.
+                    # steps is a list of strings, one string for each recipe step.
+                    # ingredients is a list of strings, one for each ingredient in the recipe.
+                    self.files[split].append({
+                        "frames": frames,
+                        "sentences": steps,
+                        "ingredients": ingredients,
+                        "recipe_name": name
+                    })
         else:
             for name, recipe_dict in recipe_dicts.items():
                 if recipe_dict["split"] == self.split:

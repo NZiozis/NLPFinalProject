@@ -1,24 +1,22 @@
 # -*- coding: utf-8 -*-
+import os
+import random
+import numpy as np
+import socket
+import argparse
+from datetime import datetime
+import wandb
+
 import torch
 import torch.nn as nn
-import os
-from datasets.data_loader import get_loader
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
+
 from models.sentence_encoder import SentenceEncoder
 from models.video_encoder import VideoEncoder
 from models.ingredient_encoder import IngredientEncoder
 from models.sentence_decoder import SentenceDecoder
 from models.recipe_encoder import RecipeEncoder
-from torch.nn.utils.rnn import pack_sequence, pad_sequence
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-import pickle
-from torch.autograd import Variable
-import random
-import numpy as np
-from datetime import datetime
-import socket
-import argparse
-from datasets.Vocabulary import Vocabulary
-import wandb
+from datasets.video_datasets import TastyVideoDataset
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -54,13 +52,14 @@ def train(args, name_repo):
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
     # Build data loader
-    train_loader = get_loader(args, args.batch_size, None, shuffle=True, num_workers=args.num_workers, use_video=True)
-
+    tasty_video_dataset = TastyVideoDataset(split='train', video=True)
+    train_loader = torch.utils.data.DataLoader(dataset=tasty_video_dataset,
+                                              batch_size=1,
+                                              shuffle=False)
     # Train the models
     use_teacherF = False
     total_step = len(train_loader)
     for epoch in range(args.num_epochs):
-        epoch_loss_all = 0
 
         for i, (vid_intervals, sentences_indices, sentences_emb, ingredients_v, name) in enumerate(train_loader):
             print(torch.cuda.memory_allocated(0))
@@ -89,6 +88,12 @@ def train(args, name_repo):
             sentence_features = sentence_features.unsqueeze(0)
             if len(sentence_features.shape) == 2:
                 sentence_features = sentence_features.unsqueeze(0)
+
+            # Calculate embedding loss
+            # When y = 1 this tells Cosine loss that embeddings should be similar
+            y = torch.Tensor([1]).cuda()
+            embedding_loss = criterion_latent(video_features, sentence_features, y)
+            video_features = []
             
             # Get ingredient features using ingredient encoder
             ingredient_feats = encoder_ingredient(ingredients_v).unsqueeze(0)
@@ -109,34 +114,43 @@ def train(args, name_repo):
             sentence_target = sentence_target.type(torch.LongTensor)
             sentence_target = sentence_target.cuda()
 
-            # Calculate losses
+            # Calculate cross entropy loss
             sentence_loss = criterion_sent(sentence_dec, sentence_target)
-            # When y = 1 this tells Cosine loss that embeddings should be similar
-            y = torch.Tensor([1]).cuda()
-            embedding_loss = criterion_latent(video_features, sentence_features, y)
             total_loss = sentence_loss + embedding_loss
+
             
+            total_loss.backward()
+            optimizer.step()
+
             encoder_video.zero_grad()
             encoder_sentences.zero_grad()
             encoder_recipe.zero_grad()
             decoder_sentences.zero_grad()
-            
-            total_loss.backward()
-            optimizer.step()
+
             if i % args.log_step == 0:  # Print log info
                 print('Epoch [{}/{}], Step [{}/{}], Decoder Loss: {:.10f}, Embedding Loss: {:.10f}'.format(epoch, args.num_epochs, i, total_step,
                                                                            sentence_loss.item(), embedding_loss.item()))
             #wandb.log({"Decoder Loss ": sentence_loss.item(), "Embedding Loss": embedding_loss.item()})
-            epoch_loss_all += total_loss
 
             # Free memory before next loop
             vid_intervals, sentences_emb, sentences_indices, ingredients_v, \
-            ingredient_feats, video_features, sentence_features, recipe_enc,  \
-            sentence_dec, sentence_target = [], [], [], [], [], [], [], [], [], []
-            del sentence_loss, embedding_loss, sentence_dec, recipe_enc, video_features, ingredient_feats
+            ingredient_feats, sentence_features, recipe_enc,  \
+            sentence_dec, sentence_target = [], [], [], [], [], [], [], [], []
+            del total_loss, sentence_loss, embedding_loss, sentence_dec, recipe_enc, video_features, ingredient_feats
+
+            #print('current memory allocated: {}'.format(torch.cuda.memory_cached() / 1024 ** 2))
+            #print('max memory allocated: {}'.format(torch.cuda.max_memory_allocated() / 1024 ** 2))
+            #print('cached memory: {}'.format(torch.cuda.memory_cached() / 1024 ** 2))
+
+            torch.cuda.empty_cache()
+
+            #print("After emptying cache:")
+            #print('current memory allocated: {}'.format(torch.cuda.memory_cached() / 1024 ** 2))
+            #print('max memory allocated: {}'.format(torch.cuda.max_memory_allocated() / 1024 ** 2))
+            #print('cached memory: {}'.format(torch.cuda.memory_cached() / 1024 ** 2))
 
             
-        if (epoch + 1) % 50 == 0:  # Save the model checkpoints
+        if (epoch + 1) % 5 == 0:  # Save the model checkpoints
             save_models(args, (encoder_recipe, encoder_ingredient, encoder_sentences, decoder_sentences, encoder_video),
                         epoch + 1)
         
