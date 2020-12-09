@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import time
 import random
 import numpy as np
 import argparse
@@ -22,12 +23,13 @@ from rouge import FilesRouge
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-COMP_PATH = '/home/cristinam/cse538/project/NLPFinalProject'
-
 def decode_sentence(sentence, index2vocab):
     """ Given a vector representing a sentence using indices, output the sentence string.
     """
-    words = [index2vocab[str(int(elt.cpu().item()))] for elt in sentence]
+    if torch.is_tensor(sentence[0]):
+        words = [index2vocab[str(int(elt.cpu().item()))].strip() for elt in sentence]
+    else:
+        words = [index2vocab[str(elt)].strip() for elt in sentence]
     return " ".join(words)
 
 
@@ -117,14 +119,18 @@ def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_d
             # Get sentence decoder output
             sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_emb)
             # TODO: Use beam search instead of greedy approach
-            _, predicted = sentence_dec.max(1)
-            
+            #_, predicted = sentence_dec.max(1)
+            predicted = beam_search_decoder(sentence_dec, 5)[0][0]
+
             # Construct ground truth from sentences
             sentences_indices = [elt.squeeze(0) for elt in sentences_indices]
             sentences_indices = torch.cat(sentences_indices, dim=0)
 
+            predicted_sentence = decode_sentence(predicted, indx2vocab_dict)
+            print("recipe ", name, " predicted sentence ", predicted_sentence)
             outputs.append(decode_sentence(predicted, indx2vocab_dict))
             gt.append(decode_sentence(sentences_indices, indx2vocab_dict))
+
     else:
         for i, (_, sentences_indices, sentences_emb, ingredients_v, name) in enumerate(test_loader):
             # Move data to gpu
@@ -155,12 +161,15 @@ def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_d
             # Get sentence decoder output
             sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_emb)
             # TODO: Use beam search instead of greedy approach
-            _, predicted = sentence_dec.max(1)
+            #_, predicted = sentence_dec.max(1)
+            predicted = beam_search_decoder(sentence_dec, 5)[0][0]
             
             # Construct ground truth from sentences
             sentences_indices = [elt.squeeze(0) for elt in sentences_indices]
             sentences_indices = torch.cat(sentences_indices, dim=0)
 
+            predicted_sentence = decode_sentence(predicted, indx2vocab_dict)
+            print("recipe ", name, " predicted sentence ", predicted_sentence)
             outputs.append(decode_sentence(predicted, indx2vocab_dict))
             gt.append(decode_sentence(sentences_indices, indx2vocab_dict))
 
@@ -172,10 +181,37 @@ def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_d
         for sent in gt:
             gtFile.write(sent+'\n')
 
+def beam_search_decoder(data, k):
+    #print("data shape ", data.shape)
+    m = nn.Softmax(dim=1)
+    data_softmax = m(data)
+
+    data = data_softmax.cpu().detach().numpy()
+
+    sequences = [[list(), 0.0]]
+    # walk over each step in sequence
+    for row in data:
+        #t1 = time.time()
+        all_candidates = list()
+        # expand each current candidate
+        for i in range(len(sequences)):
+            seq, score = sequences[i]
+            for j in range(len(row)):
+                candidate = [seq + [j], score - np.log(row[j])]
+                all_candidates.append(candidate)
+        # order all candidates by score
+        ordered = sorted(all_candidates, key=lambda tup:tup[1])
+        # select k best
+        sequences = ordered[:k]
+        #t2 = time.time()
+    return sequences
+
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    saved_model_folder = 'saved_models/train_joint_model/models_e1024_he512_hre1024_hd512_ep50_b1_l0_001'
-    epochs = 50
+    saved_model_folder = '/home/cristinam/cse538/project/NLPFinalProject/saved_models/train_joint_model/models_e1024_he512_hre1024_hd512_ep50_b1_l0_001'
+    epochs = 5
     split = 'val'
     results_path = os.path.join(saved_model_folder, 'results')
     video=True
@@ -209,4 +245,5 @@ if __name__ == '__main__':
     ref_path = os.path.join(results_path, 'gt_{}.txt'.format(split))
     scores = files_rouge.get_scores(outputs_path, ref_path, avg=True)
     print("ROUGE scores ", scores)
+
 
