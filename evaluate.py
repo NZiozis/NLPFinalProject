@@ -4,11 +4,15 @@ import time
 import random
 import numpy as np
 import argparse
+import pdb
 import json
+from math import log
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
 from torch.autograd import Variable
+from scipy.special import softmax
 
 from datasets.video_datasets import TastyVideoDataset
 from models.sentence_encoder import SentenceEncoder
@@ -33,10 +37,14 @@ def decode_sentence(sentence, index2vocab):
     return " ".join(words)
 
 
-def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_dict, use_video):
+def generate(args, saved_model_folder, epochs, split, results_path,
+             indx2vocab_dict, use_video):
     # Build the models
     encoder_recipe = RecipeEncoder(args)
-    encoder_recipe_state_dict = torch.load(os.path.join(saved_model_folder, 'encoder_recipe-{}.ckpt'.format(epochs)), map_location=torch.device('cpu'))
+    encoder_recipe_state_dict =\
+        torch.load(os.path.join(saved_model_folder,
+                                'encoder_recipe-{}.ckpt'.format(epochs)),
+                   map_location=torch.device('cpu'))
     encoder_recipe.load_state_dict(encoder_recipe_state_dict)
     encoder_recipe.eval()
     if device != 'cpu':
@@ -118,9 +126,9 @@ def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_d
             
             # Get sentence decoder output
             sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_emb)
-            # TODO: Use beam search instead of greedy approach
-            #_, predicted = sentence_dec.max(1)
-            predicted = beam_search_decoder(sentence_dec, 5)[0][0]
+            #_, predicted = sentence_dec.max(1) # Greedy decode
+            predictions = beam_search_decoder(sentence_dec, 5)[0][0] # Beam search
+            predicted = predictions[-1][0]
 
             # Construct ground truth from sentences
             sentences_indices = [elt.squeeze(0) for elt in sentences_indices]
@@ -132,7 +140,7 @@ def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_d
             gt.append(decode_sentence(sentences_indices, indx2vocab_dict))
 
     else:
-        for i, (_, sentences_indices, sentences_emb, ingredients_v, name) in enumerate(test_loader):
+        for i, (_, sentences_indices, sentences_emb, ingredients_v, name) in enumerate(tqdm(test_loader)):
             # Move data to gpu
             sentences_emb = [j.float().cuda() for j in sentences_emb]
             sentences_indices = [j.cuda() for j in sentences_indices]
@@ -160,10 +168,10 @@ def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_d
             
             # Get sentence decoder output
             sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_emb)
-            # TODO: Use beam search instead of greedy approach
-            #_, predicted = sentence_dec.max(1)
-            predicted = beam_search_decoder(sentence_dec, 5)[0][0]
-            
+            # _, predicted = sentence_dec.max(1) # Greedy approach 
+            predictions = beam_search_decoder(sentence_dec, 5) # Beam search approach
+            predicted = predictions[-1][0]
+
             # Construct ground truth from sentences
             sentences_indices = [elt.squeeze(0) for elt in sentences_indices]
             sentences_indices = torch.cat(sentences_indices, dim=0)
@@ -181,29 +189,32 @@ def generate(args, saved_model_folder, epochs, split, results_path, indx2vocab_d
         for sent in gt:
             gtFile.write(sent+'\n')
 
-def beam_search_decoder(data, k):
-    #print("data shape ", data.shape)
-    m = nn.Softmax(dim=1)
-    data_softmax = m(data)
 
-    data = data_softmax.cpu().detach().numpy()
+def beam_search_decoder(data, k):
+    """
+    @param data (torch.Tensor) A sequence of distributions over the vocab (single recipe)
+    @param k (int) Hyperparameter for number of non-repetitions
+    """
+    # Softmax the distributions
+    soft_max = nn.Softmax(dim=1)
+    data = soft_max(data)
+
+    data = data.cpu().data.numpy()
 
     sequences = [[list(), 0.0]]
     # walk over each step in sequence
     for row in data:
-        #t1 = time.time()
         all_candidates = list()
         # expand each current candidate
         for i in range(len(sequences)):
             seq, score = sequences[i]
             for j in range(len(row)):
-                candidate = [seq + [j], score - np.log(row[j])]
+                candidate = [seq + [j], score - log(row[j])]
                 all_candidates.append(candidate)
         # order all candidates by score
-        ordered = sorted(all_candidates, key=lambda tup:tup[1])
+        ordered = sorted(all_candidates, key=lambda tup: tup[1])
         # select k best
         sequences = ordered[:k]
-        #t2 = time.time()
     return sequences
 
 
@@ -214,7 +225,7 @@ if __name__ == '__main__':
     epochs = 5
     split = 'val'
     results_path = os.path.join(saved_model_folder, 'results')
-    video=True
+    video = False
 
     # model parameters
     parser.add_argument('--vocab_len', type=int, default=12269, help='')
@@ -237,7 +248,8 @@ if __name__ == '__main__':
         index_to_vocab = json.load(vocabFile)
 
     # Generate results files with one recipe per line
-    generate(args, saved_model_folder, epochs, split, results_path, index_to_vocab, video)
+    generate(args, saved_model_folder, epochs, split, results_path,
+             index_to_vocab, video)
 
     # Calculate rouge score
     files_rouge = FilesRouge()
@@ -245,5 +257,4 @@ if __name__ == '__main__':
     ref_path = os.path.join(results_path, 'gt_{}.txt'.format(split))
     scores = files_rouge.get_scores(outputs_path, ref_path, avg=True)
     print("ROUGE scores ", scores)
-
 
