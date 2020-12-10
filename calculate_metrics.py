@@ -47,7 +47,7 @@ def main():
     expected_path = os.path.join(path_to_results, 'gt_val.txt')
 
     print_out_rouge_score(predicted_path, expected_path)
-    # print_out_bleu_and_meteor_score(predicted_path, expected_path)
+    print_out_bleu_and_meteor_score(predicted_path, expected_path)
 
     return 0
 

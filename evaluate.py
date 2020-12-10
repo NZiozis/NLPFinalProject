@@ -96,7 +96,7 @@ def generate(args, saved_model_folder, epochs, split, results_path,
 
     outputs, gt = [], []
     if use_video:
-        for i, (vid_intervals, sentences_indices, sentences_emb, ingredients_v, name) in enumerate(test_loader):
+        for i, (vid_intervals, sentences_indices, sentences_emb, ingredients_v, name) in enumerate(tqdm(test_loader)):
             # Move data to gpu
             vid_intervals = [j.float().cuda() for j in vid_intervals]
             sentences_emb = [j.float().cuda() for j in sentences_emb]
@@ -127,7 +127,7 @@ def generate(args, saved_model_folder, epochs, split, results_path,
             # Get sentence decoder output
             sentence_dec = decoder_sentences(recipe_enc, sent_lens, sentences_emb)
             #_, predicted = sentence_dec.max(1) # Greedy decode
-            predictions = beam_search_decoder(sentence_dec, 5)[0][0] # Beam search
+            predictions = beam_search_decoder(sentence_dec, 5) # Beam search
             predicted = predictions[-1][0]
 
             # Construct ground truth from sentences
@@ -222,10 +222,10 @@ def beam_search_decoder(data, k):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     saved_model_folder = '/home/cristinam/cse538/project/NLPFinalProject/saved_models/train_joint_model/models_e1024_he512_hre1024_hd512_ep50_b1_l0_001'
-    epochs = 5
+    epochs = 21
     split = 'val'
     results_path = os.path.join(saved_model_folder, 'results')
-    video = False
+    video = True
 
     # model parameters
     parser.add_argument('--vocab_len', type=int, default=12269, help='')
