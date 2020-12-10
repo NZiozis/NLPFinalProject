@@ -41,6 +41,7 @@ train_baseline.py: Script to train the baseline model (sentence encoder, ingredi
 train_joint_model.py: Script to train the joint model (video and sentence encoder, ingredient encoder, recipe RNN and sentence decoder). Was based on train_ce.py but also heavily modified. Addition of a cosine embedding loss.
 
 evaluate.py: Written from scratch and used to generate predictions along with ground truth for both baseline and joint model.
+
 calculate_metrics.py: Given a txt file containing model output and a txt file containing ground truth, calculates ROUGE, BLEU and Meteor scores.
 
 
@@ -69,9 +70,13 @@ python calculate_metrics.py
 # Requirements
 
 Python 3.7.4
+
 Pytorch 1.6.0
+
 CUDA 8.0
+
 wandb
+
 rouge
 
 Notes:
