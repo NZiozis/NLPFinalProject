@@ -39,11 +39,9 @@ def print_out_bleu_and_meteor_score(predicted_path, expected_path):
 
 def main():
 
-    path_to_results =\
-        "/mnt/disks/nlp-small/new_saved_models/" +\
-        "train_baseline/models_e1024_he512_hre1024_hd512_ep50_b1_l0_001/results"
+    path_to_results ="/home/cristinam/cse538/project/NLPFinalProject/saved_models/train_joint_model/models_e1024_he512_hre1024_hd512_ep50_b1_l0_001/results"
 
-    predicted_path = os.path.join(path_to_results, 'outputs_val.txt')
+    predicted_path = os.path.join(path_to_results, 'outputs_val_epoch21.txt')
     expected_path = os.path.join(path_to_results, 'gt_val.txt')
 
     print_out_rouge_score(predicted_path, expected_path)
